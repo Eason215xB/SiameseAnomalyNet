@@ -6,7 +6,7 @@
     "num_epochs": 500,
     "patch_size": [96, 96],
     "normal_b_multiplier": 2.0,
-    "learning_rate": 1e-4,
+    "learning_rate": 1e-2,
     "weight_decay": 5e-4,
     
     "backbone": "resnet18",

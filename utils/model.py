@@ -94,6 +94,9 @@ class SharedEncoder(torch_nn.Module):
         # Dropout 用于正则化
         self.dropout = torch_nn.Dropout2d(p=dropout) if dropout > 0 else None
 
+        for param in self.encoder[0:6].parameters(): # 冻结 conv1 到 layer2
+            param.requires_grad = False
+
     def forward(self, x):
         x = self.encoder(x)
         if self.dropout is not None:
@@ -154,7 +157,7 @@ class SiameseAnomalyNet(torch_nn.Module):
             torch_nn.Conv2d(feat_channels, feat_channels // 2, kernel_size=3, padding=1),
             torch_nn.BatchNorm2d(feat_channels // 2),
             torch_nn.ReLU(inplace=True),
-            torch_nn.Dropout2d(p=dropout/2) if dropout > 0 else torch_nn.Identity(),
+            torch_nn.Dropout2d(p=dropout) if dropout > 0 else torch_nn.Identity(),
             torch_nn.Conv2d(feat_channels // 2, feat_channels // 4, kernel_size=3, padding=1),
             torch_nn.BatchNorm2d(feat_channels // 4),
             torch_nn.ReLU(inplace=True),

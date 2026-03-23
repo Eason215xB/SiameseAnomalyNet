@@ -449,11 +449,12 @@ def main():
     model = DDP(model, device_ids=[local_rank], output_device=local_rank)
     
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(
-        model.parameters(), 
-        lr=paras["learning_rate"], 
-        weight_decay=paras.get("weight_decay", 1e-5)
-    )
+
+    optimizer = optim.Adam([
+        {'params': model.module.encoder.parameters(), 'lr': paras["learning_rate"] * 0.1}, # backbone 学习率除以10
+        {'params': model.module.aligner.parameters(), 'lr': paras["learning_rate"]},
+        {'params': model.module.heatmap_generator.parameters(), 'lr': paras["learning_rate"]}
+    ], weight_decay=paras.get("weight_decay", 1e-5))
     
     # 添加学习率调度器 - 当验证损失停滞时降低学习率
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
