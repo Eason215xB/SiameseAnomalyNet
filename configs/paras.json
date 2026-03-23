@@ -7,14 +7,14 @@
     "patch_size": [96, 96],
     "normal_b_multiplier": 2.0,
     "learning_rate": 1e-2,
-    "weight_decay": 5e-4,
+    "weight_decay": 1e-3,
     
     "backbone": "resnet18",
     "pretrained": true,
     "pretrained_path": "/home/algo002/work/SiameseAnomalyNet/pretrain/resnet18-f37072fd.pth",
     "dropout": 0.5,
     "early_stop_patience": 15,
-    "log_path": "./logs/AbnormalClass/Siamese-Merged-0323-1",
+    "log_path": "./logs/AbnormalClass/Siamese-Merged-0323-2",
     "model_path": "",
     
     "val_crop_offset": 4,
