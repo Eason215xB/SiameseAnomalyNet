@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# 设置可用显卡，例如使用 4 张显卡: 0, 1, 2, 3
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 # 获取使用的显卡数量
