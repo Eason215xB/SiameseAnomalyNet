@@ -18,6 +18,8 @@ import torchvision.transforms.functional as F
 logger = logging.getLogger('main')
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
+# IMAGENET_MEAN = [0.0, 0.0, 0.0]
+# IMAGENET_STD = [1.0, 1.0, 1.0]
 
 from utils.utils import merge_dataset
 
@@ -47,6 +49,23 @@ def _binary_abnormal_cid(an):
         return 1
 
     return 0
+
+
+def _abnormal_content_str(an):
+    """abnormal 字段原文（无异常描述则为空串），供验证可视化文件名。"""
+    raw = an.get("abnormal")
+    if raw is None:
+        return ""
+    if isinstance(raw, bool):
+        return ""
+    if isinstance(raw, (int, float)):
+        if raw == 0:
+            return ""
+        rf = float(raw)
+        return str(int(rf)) if rf == int(rf) else str(raw)
+    if isinstance(raw, str):
+        return raw.strip()
+    return str(raw).strip()
 
 
 def _karyotype_id(an):
@@ -477,6 +496,9 @@ class SiameseChromosomeDataset(Dataset):
             "is_anomaly": torch.tensor([is_anomaly], dtype=torch.float32),
             "image_name_B": f"{key}:{anno_idx_B:02d}",
             "image_name_A": f"{key}:{anno_idx_A:02d}",
+            "cell_key": key,
             "label_A": float(lbl_A),
             "label_B": float(lbl_B),
+            "abnormal_content_A": _abnormal_content_str(an_A),
+            "abnormal_content_B": _abnormal_content_str(an_B),
         }

@@ -44,13 +44,13 @@ def _metrics_from_cm(tn, fp, fn, tp):
 
 def visualize_training_samples(dataloader, log_path, num_batches=3, max_samples_per_batch=4):
     """
-    可视化训练样本（类似YOLO风格），保存前几个batch的输入图片和标签
-    显示：单条A的标签、单条B的标签、一对的标签（是否有差异）
+    可视化训练样本(类似YOLO风格),保存前几个batch的输入图片和标签
+    显示:单条A的标签、单条B的标签、一对的标签(是否有差异)
     Args:
         dataloader: 训练数据加载器
         log_path: 保存路径
-        num_batches: 要可视化的batch数量（默认3）
-        max_samples_per_batch: 每个batch最多显示多少样本（默认4）
+        num_batches: 要可视化的batch数量(默认3)
+        max_samples_per_batch: 每个batch最多显示多少样本(默认4)
     """
     # ImageNet 反归一化参数
     IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
@@ -66,7 +66,7 @@ def visualize_training_samples(dataloader, log_path, num_batches=3, max_samples_
     vis_dir = os.path.join(log_path, "visualization")
     os.makedirs(vis_dir, exist_ok=True)
     
-    print(f"\n🖼️  正在生成训练样本可视化（前{num_batches}个batch）...")
+    print(f"\n🖼️  正在生成训练样本可视化(前{num_batches}个batch)...")
     print("   布局: [img_A | mask_A | img_B | mask_B] + 详细标签信息")
     
     batch_count = 0
@@ -86,7 +86,7 @@ def visualize_training_samples(dataloader, log_path, num_batches=3, max_samples_
         
         n_samples = min(len(img_A), max_samples_per_batch)
         
-        # 创建大图：每行显示一个样本的 [img_A, mask_A, img_B, mask_B]
+        # 创建大图:每行显示一个样本的 [img_A, mask_A, img_B, mask_B]
         fig, axes = plt.subplots(n_samples, 4, figsize=(14, 3.5*n_samples))
         if n_samples == 1:
             axes = axes.reshape(1, -1)
@@ -114,7 +114,7 @@ def visualize_training_samples(dataloader, log_path, num_batches=3, max_samples_
             axes[i, 0].set_title(f"A (Reference)\n{names_A[i]}\n{a_status}", fontsize=7)
             axes[i, 0].axis('off')
             
-            # 显示 mask_A（检查是否和img_A对齐）
+            # 显示 mask_A(检查是否和img_A对齐)
             axes[i, 1].imshow(mask_a_vis, cmap='gray', vmin=0, vmax=1)
             axes[i, 1].set_title("Mask A", fontsize=7, color='blue')
             axes[i, 1].axis('off')
@@ -146,7 +146,7 @@ def visualize_training_samples(dataloader, log_path, num_batches=3, max_samples_
         print(f"  ✓ Batch {batch_idx}: {n_samples} 样本已保存")
         batch_count += 1
     
-    print(f"🎉 可视化完成！共 {batch_count} 张图，保存至: {vis_dir}")
+    print(f"🎉 可视化完成！共 {batch_count} 张图,保存至: {vis_dir}")
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, local_rank):
     model.train()
@@ -164,8 +164,8 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, loca
 
         optimizer.zero_grad()
         logits, _ = model(img_A, mask_A, img_B, mask_B)
-        loss = criterion(logits, labels)
-
+        smoothed_labels = labels.float() * 0.90 + 0.05 
+        loss = criterion(logits, smoothed_labels)
         loss.backward()
         optimizer.step()
 
@@ -378,9 +378,9 @@ def main():
         drop_last=True
     )
     
-    # 训练前可视化前3个batch的样本（类似YOLO风格）
+    # 训练前可视化前3个batch的样本(类似YOLO风格)
     if local_rank == 0:
-        # 创建一个临时非分布式loader用于可视化（避免DistributedSampler的shuffle干扰）
+        # 创建一个临时非分布式loader用于可视化(避免DistributedSampler的shuffle干扰)
         vis_loader = DataLoader(
             train_dataset,
             batch_size=paras["batch_size"],
@@ -390,7 +390,7 @@ def main():
         )
         visualize_training_samples(vis_loader, paras["log_path"], num_batches=3, max_samples_per_batch=4)
     
-    # 验证集 (仅在主卡 Rank 0 初始化)：默认 is_train=False 保留真实分布用于计算客观指标
+    # 验证集 (仅在主卡 Rank 0 初始化):默认 is_train=False 保留真实分布用于计算客观指标
     val_loader = None
     val_stats = None
     if local_rank == 0:
@@ -448,13 +448,25 @@ def main():
 
     model = DDP(model, device_ids=[local_rank], output_device=local_rank)
     
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([2.0]).to(device))
+    
+    # 1. 区分骨干网络和头部的参数
+    backbone_params = []
+    head_params = []
+    for name, param in model.module.named_parameters():
+        if 'encoder' in name:
+            if param.requires_grad:
+                backbone_params.append(param)
+        else:
+            if param.requires_grad:
+                head_params.append(param)
 
+    # 2. 设置差异化学习率 (骨干网络学习率缩小 10 倍)
+    base_lr = paras["learning_rate"]
     optimizer = optim.Adam([
-        {'params': model.module.encoder.parameters(), 'lr': paras["learning_rate"] * 0.1}, # backbone 学习率除以10
-        {'params': model.module.aligner.parameters(), 'lr': paras["learning_rate"]},
-        {'params': model.module.heatmap_generator.parameters(), 'lr': paras["learning_rate"]}
-    ], weight_decay=paras.get("weight_decay", 1e-5))
+        {'params': backbone_params, 'lr': base_lr * 0.1}, 
+        {'params': head_params, 'lr': base_lr}
+    ], weight_decay=paras.get("weight_decay", 1e-3)) # 顺便将权重衰减(L2正则)提高到1e-3
     
     # 添加学习率调度器 - 当验证损失停滞时降低学习率
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(

@@ -152,16 +152,16 @@ class SiameseAnomalyNet(torch_nn.Module):
         self.aligner = CrossAttentionAlignment(channels=feat_channels)
         
         # 3. 异常热力图生成器 (将差异特征降维到 1 个通道，即二维 Heatmap)
-        # 添加 BatchNorm 和 Dropout 增强正则化
         self.heatmap_generator = torch_nn.Sequential(
             torch_nn.Conv2d(feat_channels, feat_channels // 2, kernel_size=3, padding=1),
             torch_nn.BatchNorm2d(feat_channels // 2),
             torch_nn.ReLU(inplace=True),
-            torch_nn.Dropout2d(p=dropout) if dropout > 0 else torch_nn.Identity(),
+            torch_nn.Dropout2d(p=dropout),  # 取消除以2，直接使用 0.5 的高强度 Dropout
             torch_nn.Conv2d(feat_channels // 2, feat_channels // 4, kernel_size=3, padding=1),
             torch_nn.BatchNorm2d(feat_channels // 4),
             torch_nn.ReLU(inplace=True),
-            torch_nn.Conv2d(feat_channels // 4, 1, kernel_size=1)  # 输出 1 通道的 Anomaly Heatmap
+            torch_nn.Dropout2d(p=dropout/2), # 在第二层也加一点 Dropout
+            torch_nn.Conv2d(feat_channels // 4, 1, kernel_size=1) 
         )
         
         # 4. 全局平均池化 (GAP) 用于图像级分类
