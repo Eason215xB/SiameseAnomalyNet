@@ -24,20 +24,28 @@ from utils.utils import merge_dataset
 
 def _binary_abnormal_cid(an):
     """
-    染色体级二分类：0=结构正常，1=异常。
-    逻辑：abnormal 字段具有最高优先级！只要 abnormal 是文字且不为空，即视为异常。
+    染色体级二分类：0=结构正常，1=异常。依据标注字段，不使用 category_id
+    （category_id 表示核型类别 / 几号染色体，与是否异常无关）。
+
+    与导出逻辑一致：正常为 abnormal 空；异常为 abnormal 非空字符串；
+    另：bind_type 字符串中含 "mar" 视为异常。对 JSON null、数值 0、布尔值按正常处理。
     """
-    # 1. 最高优先级：检查 abnormal 字段
-    abnormal_val = an.get("abnormal")
-    if isinstance(abnormal_val, str) and abnormal_val.strip() != "":
+    raw = an.get("abnormal")
+    
+    # 1. 兼容数字标注 (如 1 代表异常，0 代表正常)
+    if isinstance(raw, (int, float)):
+        if raw != 0:
+            return 1
+            
+    # 2. 严格要求是字符串(文字)且非空
+    elif isinstance(raw, str) and raw.strip() != "":
         return 1
         
-    # 2. 次级优先级：如果 abnormal 为空，再看 bind_type 是否包含特定异常（如 mar）
-    bind_type_str = str(an.get("bind_type", "") or "").strip().lower()
+    # 3. 兜底策略：检查 bind_type 中是否包含 mar
+    bind_type_str = str(an.get("bind_type", "") or "").lower()
     if "mar" in bind_type_str:
         return 1
-        
-    # 3. 兜底情况：如果 abnormal 为空，且 bind_type 不是 mar，则视为正常
+
     return 0
 
 
