@@ -1,0 +1,1 @@
+正常B样本数 = 异常B样本数 × multiplier
