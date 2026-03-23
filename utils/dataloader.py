@@ -12,6 +12,8 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
+import random
+import torchvision.transforms.functional as F
 
 logger = logging.getLogger('main')
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -22,21 +24,20 @@ from utils.utils import merge_dataset
 
 def _binary_abnormal_cid(an):
     """
-    染色体级二分类：0=结构正常，1=异常。依据标注字段，不使用 category_id
-    （category_id 表示核型类别 / 几号染色体，与是否异常无关）。
-
-    与导出逻辑一致：正常为 abnormal 空；异常为 abnormal 非空字符串；
-    另：bind_type 字符串中含 \"mar\" 视为异常。对 JSON null、数值 0 按正常处理。
+    染色体级二分类：0=结构正常，1=异常。
+    逻辑：abnormal 字段具有最高优先级！只要 abnormal 是文字且不为空，即视为异常。
     """
-    raw = an.get("abnormal")
-    if isinstance(raw, (int, float)):
-        if raw != 0:
-            return 1
-    elif raw is not None and str(raw).strip() != "":
+    # 1. 最高优先级：检查 abnormal 字段
+    abnormal_val = an.get("abnormal")
+    if isinstance(abnormal_val, str) and abnormal_val.strip() != "":
         return 1
-    bind_type_str = str(an.get("bind_type", "") or "").lower()
+        
+    # 2. 次级优先级：如果 abnormal 为空，再看 bind_type 是否包含特定异常（如 mar）
+    bind_type_str = str(an.get("bind_type", "") or "").strip().lower()
     if "mar" in bind_type_str:
         return 1
+        
+    # 3. 兜底情况：如果 abnormal 为空，且 bind_type 不是 mar，则视为正常
     return 0
 
 
@@ -216,9 +217,6 @@ class SiameseChromosomeDataset(Dataset):
         Returns:
             tensor_img, tensor_mask
         """
-        import random
-        import torchvision.transforms.functional as F
-        
         # 转为PIL
         img_pil = Image.fromarray(img.astype(np.uint8))
         mask_pil = Image.fromarray(mask.astype(np.uint8), mode='L')
