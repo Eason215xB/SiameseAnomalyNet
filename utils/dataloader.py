@@ -338,6 +338,7 @@ class SiameseChromosomeDataset(Dataset):
         # key -> category_id -> 该 cell 内「结构正常」的 anno_idx 列表（同源池）
         normals_by_key_cat = defaultdict(lambda: defaultdict(list))
         abnormal_candidates = []  # (key, anno_idx_B)
+        skip_cat = frozenset(self.paras.get("skip_category_ids", [0, 25]))
 
         with h5py.File(self.h5_ann_path, "r", swmr=True) as f_ann:
             for cell_data in valid_cells_list:
@@ -350,6 +351,8 @@ class SiameseChromosomeDataset(Dataset):
                         continue
                     kid = _karyotype_id(an)
                     if kid is None:
+                        continue
+                    if kid in skip_cat:
                         continue
                     cid = _binary_abnormal_cid(an)
                     if cid == 0:
@@ -524,18 +527,10 @@ class SiameseChromosomeDataset(Dataset):
             # A流可以是正常也可以是异常（对称设计）
             crop_img_A, crop_mask_A = crop_single_chromosome(image_np_A, an_A, self.crop_offset)
 
-        # 转换为 Tensor（使用同步变换确保 img 和 mask 对齐）
-        # A和B使用不同的随机种子，但同一对(A,B)内的img和mask使用相同种子
-        seed_a = random.randint(0, 2**32 - 1)
-        seed_b = random.randint(0, 2**32 - 1)
-        strong_same = bool(is_anomaly == 0)
+        shared_seed = random.randint(0, 2**32 - 1)
         
-        tensor_img_A, tensor_mask_A = self._sync_transform(
-            crop_img_A, crop_mask_A, seed=seed_a, strong_same=strong_same
-        )
-        tensor_img_B, tensor_mask_B = self._sync_transform(
-            crop_img_B, crop_mask_B, seed=seed_b, strong_same=strong_same
-        )
+        tensor_img_A, tensor_mask_A = self._sync_transform(crop_img_A, crop_mask_A, seed=shared_seed)
+        tensor_img_B, tensor_mask_B = self._sync_transform(crop_img_B, crop_mask_B, seed=shared_seed)
 
         return {
             "img_A": tensor_img_A,

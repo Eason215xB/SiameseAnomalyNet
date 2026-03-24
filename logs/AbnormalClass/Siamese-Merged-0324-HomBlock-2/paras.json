@@ -9,7 +9,7 @@
     96
   ],
   "normal_b_multiplier": 4.0,
-  "learning_rate": 0.0001,
+  "learning_rate": 5e-05,
   "weight_decay": 0.001,
   "backbone": "resnet18",
   "pretrained": true,
@@ -17,7 +17,7 @@
   "dropout": 0.5,
   "invert_p": 0.5,
   "early_stop_patience": 15,
-  "log_path": "./logs/AbnormalClass/Siamese-Merged-0324-HomBlock",
+  "log_path": "./logs/AbnormalClass/Siamese-Merged-0324-HomBlock-2",
   "model_path": "",
   "val_crop_offset": 4,
   "pin_memory": true,

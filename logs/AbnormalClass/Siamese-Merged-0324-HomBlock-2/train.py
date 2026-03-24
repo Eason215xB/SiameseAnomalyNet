@@ -22,7 +22,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-#----------混淆矩阵指标计算------------
+
 def _metrics_from_cm(tn, fp, fn, tp):
     def _safe_div(num, den):
         return float(num) / float(den) if den > 0 else float("nan")
@@ -41,10 +41,21 @@ def _metrics_from_cm(tn, fp, fn, tp):
             f1 = 0.0
     return acc, f1, specificity, precision, recall
 
-#----------训练开始的可视化------------
+
 def visualize_training_samples(dataloader, log_path, num_batches=3, max_samples_per_batch=4):
-    IMAGENET_MEAN = np.array([0.0, 0.0, 0.0])
-    IMAGENET_STD = np.array([1.0, 1.0, 1.0])
+    """
+    可视化训练样本,保存前几个batch的输入图片和标签
+    显示:单条A的标签、单条B的标签、一对的标签(是否有差异)
+    Args:
+        dataloader: 训练数据加载器
+        log_path: 保存路径
+        num_batches: 要可视化的batch数量(默认3)
+        max_samples_per_batch: 每个batch最多显示多少样本(默认4)
+    """
+    # ImageNet 反归一化参数
+    IMAGENET_MEAN = np.array([0.485, 0.456, 0.406])
+    IMAGENET_STD = np.array([0.229, 0.224, 0.225])
+    
     
     def denormalize(tensor):
         """将归一化的tensor还原为可视化格式"""
@@ -57,6 +68,7 @@ def visualize_training_samples(dataloader, log_path, num_batches=3, max_samples_
     os.makedirs(vis_dir, exist_ok=True)
     
     print(f"\n🖼️  正在生成训练样本可视化(前{num_batches}个batch)...")
+    print("   布局: [img_A | mask_A | img_B | mask_B] + 详细标签信息")
     
     batch_count = 0
     for batch_idx, batch_data in enumerate(dataloader):
@@ -137,8 +149,6 @@ def visualize_training_samples(dataloader, log_path, num_batches=3, max_samples_
     
     print(f"🎉 可视化完成！共 {batch_count} 张图,保存至: {vis_dir}")
 
-
-#--------------训练---------------
 def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, local_rank):
     model.train()
     sum_loss = 0.0
@@ -184,7 +194,6 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, loca
     return avg_loss, t_acc, t_f1, t_spec, t_prec, t_rec
 
 
-#--------------loss图---------------
 def save_loss_curve_png(log_path, epoch_nums, train_losses, val_losses):
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.plot(epoch_nums, train_losses, "b-", marker="o", markersize=3, label="train loss", linewidth=1.2)
@@ -199,7 +208,6 @@ def save_loss_curve_png(log_path, epoch_nums, train_losses, val_losses):
     plt.close(fig)
 
 
-#--------------验证---------------
 @torch.no_grad()
 def evaluate(model, dataloader, criterion, device):
     model.eval()
@@ -284,8 +292,6 @@ def evaluate(model, dataloader, criterion, device):
         fn,
         tp,
     )
-
-
 
 def main():
     # ================= 1. 解析配置 =================
@@ -372,18 +378,20 @@ def main():
         pin_memory=paras["pin_memory"], 
         drop_last=True
     )
-
-
+    
+    # 训练前可视化前3个batch的样本(类似YOLO风格)
     if local_rank == 0:
+        # 创建一个临时非分布式loader用于可视化(避免DistributedSampler的shuffle干扰)
         vis_loader = DataLoader(
             train_dataset,
             batch_size=paras["batch_size"],
-            shuffle=False,
-            num_workers=0,
+            shuffle=False,  # 固定顺序便于观察
+            num_workers=0,  # 单线程避免多进程问题
             pin_memory=False,
         )
         visualize_training_samples(vis_loader, paras["log_path"], num_batches=3, max_samples_per_batch=4)
     
+    # 验证集 (仅在主卡 Rank 0 初始化):默认 is_train=False 保留真实分布用于计算客观指标
     val_loader = None
     val_stats = None
     if local_rank == 0:
@@ -416,6 +424,7 @@ def main():
             pin_memory=paras["pin_memory"]
         )
     # ================= 4. 模型与 DDP 包装 =================
+    # 使用 ResNet 作为 backbone
     backbone = paras.get("backbone", "resnet18")        # 可选: resnet18, resnet34, resnet50
     pretrained = paras.get("pretrained", False)         # 是否使用 ImageNet 预训练权重
     pretrained_path = paras.get("pretrained_path", None)  # 本地预训练权重路径
@@ -460,7 +469,7 @@ def main():
         {'params': head_params, 'lr': base_lr}
     ], weight_decay=paras.get("weight_decay", 1e-3))
     
-    # 添加学习率调度器
+    # 添加学习率调度器 - 当验证损失停滞时降低学习率
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, 
         mode='min', 
@@ -469,7 +478,7 @@ def main():
         verbose=(local_rank == 0)
     )
     
-    # ================= 5. 训练 =================
+    # ================= 5. 开始训练循环 =================
     best_auc = 0.0
     best_val_loss = float("inf")
     ever_saved_by_auc = False
