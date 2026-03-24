@@ -16,10 +16,10 @@ import random
 import torchvision.transforms.functional as F
 
 logger = logging.getLogger('main')
-IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD = [0.229, 0.224, 0.225]
-# IMAGENET_MEAN = [0.0, 0.0, 0.0]
-# IMAGENET_STD = [1.0, 1.0, 1.0]
+# IMAGENET_MEAN = [0.485, 0.456, 0.406]
+# IMAGENET_STD = [0.229, 0.224, 0.225]
+IMAGENET_MEAN = [0.0, 0.0, 0.0]
+IMAGENET_STD = [1.0, 1.0, 1.0]
 
 from utils.utils import merge_dataset
 
@@ -210,18 +210,38 @@ class SiameseChromosomeDataset(Dataset):
         self.is_train = is_train
         
         # 几何变换参数（训练时随机，验证时固定）
+        # 有差异对 (label=1)：沿用原幅度；无差异对 (label=0)：加大仿射/旋转，迫使网络依赖结构而非外观
         self.rotation_degrees = 30 if is_train else 0
         self.translate = (0.15, 0.15) if is_train else (0, 0)
         self.scale = (0.9, 1.1) if is_train else (1.0, 1.0)
+        self.rotation_degrees_label0 = int(paras.get("label0_rotation_degrees", 45))
+        self.translate_label0 = tuple(
+            paras.get("label0_translate", [0.25, 0.25])
+        )
+        self.scale_label0 = tuple(paras.get("label0_scale", [0.82, 1.18]))
         self.flip_p = 0.5 if is_train else 0.0
         
         # 颜色变换（仅图像）
         self.color_jitter = transforms.ColorJitter(
             brightness=0.2, contrast=0.2, saturation=0.1
         ) if is_train else None
+        self.color_jitter_label0 = transforms.ColorJitter(
+            brightness=float(paras.get("label0_cj_brightness", 0.38)),
+            contrast=float(paras.get("label0_cj_contrast", 0.38)),
+            saturation=float(paras.get("label0_cj_saturation", 0.18)),
+            hue=float(paras.get("label0_cj_hue", 0.05)),
+        ) if is_train else None
         self.gaussian_blur = transforms.GaussianBlur(
             kernel_size=3, sigma=(0.1, 0.5)
         ) if is_train else None
+        _bk = int(paras.get("label0_blur_kernel", 5))
+        if _bk % 2 == 0:
+            _bk += 1
+        self.gaussian_blur_label0 = transforms.GaussianBlur(
+            kernel_size=_bk,
+            sigma=tuple(paras.get("label0_blur_sigma", [0.2, 1.2])),
+        ) if is_train else None
+        self.invert_p = float(paras.get("invert_p", 0.0))
         
         # 归一化
         self.normalize = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
@@ -234,13 +254,14 @@ class SiameseChromosomeDataset(Dataset):
         if self.is_train:
             random.shuffle(self.all_items)
     
-    def _sync_transform(self, img, mask, seed=None):
+    def _sync_transform(self, img, mask, seed=None, strong_same=False):
         """
         对图像和mask进行同步几何变换，确保两者对齐
         Args:
             img: numpy array (H, W, C)
             mask: numpy array (H, W)
             seed: 随机种子，确保img和mask的随机操作一致
+            strong_same: 训练时且无差异对(label=0)，使用更强的仿射与光度增强
         Returns:
             tensor_img, tensor_mask
         """
@@ -252,25 +273,33 @@ class SiameseChromosomeDataset(Dataset):
         img_pil = F.resize(img_pil, (self.resize, self.resize))
         mask_pil = F.resize(mask_pil, (self.resize, self.resize))
         
+        rot_max = self.rotation_degrees
+        translate = self.translate
+        scale = self.scale
+        if self.is_train and strong_same:
+            rot_max = self.rotation_degrees_label0
+            translate = self.translate_label0
+            scale = self.scale_label0
+        
         if self.is_train and seed is not None:
             # 设置随机种子，确保img和mask的随机操作完全一致
             random.seed(seed)
             
             # 同步随机旋转
-            if self.rotation_degrees > 0:
-                angle = random.uniform(-self.rotation_degrees, self.rotation_degrees)
+            if rot_max > 0:
+                angle = random.uniform(-rot_max, rot_max)
                 img_pil = F.rotate(img_pil, angle, fill=0)
                 mask_pil = F.rotate(mask_pil, angle, fill=0)
             
             # 同步随机仿射变换
-            if self.translate != (0, 0) or self.scale != (1.0, 1.0):
+            if translate != (0, 0) or scale != (1.0, 1.0):
                 # 简单的平移+缩放实现
                 if random.random() < 0.5:
                     translate_px = (
-                        int(random.uniform(-self.translate[0], self.translate[0]) * self.resize),
-                        int(random.uniform(-self.translate[1], self.translate[1]) * self.resize)
+                        int(random.uniform(-translate[0], translate[0]) * self.resize),
+                        int(random.uniform(-translate[1], translate[1]) * self.resize)
                     )
-                    scale_factor = random.uniform(self.scale[0], self.scale[1])
+                    scale_factor = random.uniform(scale[0], scale[1])
                     img_pil = F.affine(img_pil, angle=0, translate=translate_px, scale=scale_factor, shear=0, fill=0)
                     mask_pil = F.affine(mask_pil, angle=0, translate=translate_px, scale=scale_factor, shear=0, fill=0)
             
@@ -286,10 +315,17 @@ class SiameseChromosomeDataset(Dataset):
         tensor_img = F.to_tensor(img_pil)
         tensor_mask = F.to_tensor(mask_pil)
         
-        # 图像的颜色变换（mask不需要）
-        if self.is_train and self.color_jitter is not None:
+        if self.is_train and self.invert_p > 0 and random.random() < self.invert_p:
+            tensor_img = 1.0 - tensor_img
+        
+        # 图像的颜色变换（无差异对使用更强 ColorJitter / Blur）
+        if self.is_train and strong_same and self.color_jitter_label0 is not None:
+            tensor_img = self.color_jitter_label0(tensor_img)
+        elif self.is_train and self.color_jitter is not None:
             tensor_img = self.color_jitter(tensor_img)
-        if self.is_train and self.gaussian_blur is not None:
+        if self.is_train and strong_same and self.gaussian_blur_label0 is not None:
+            tensor_img = self.gaussian_blur_label0(tensor_img)
+        elif self.is_train and self.gaussian_blur is not None:
             tensor_img = self.gaussian_blur(tensor_img)
         
         # 归一化（只对图像）
@@ -352,6 +388,13 @@ class SiameseChromosomeDataset(Dataset):
         rng = random.Random(seed)
         n_ab = len(abnormal_items)
         target_nb = int(round(n_ab * multiplier)) if multiplier > 0 else 0
+
+        if n_ab == 0 and normal_b_candidates:
+            cap = self.paras.get("normal_only_pair_cap")
+            if cap is None:
+                target_nb = len(normal_b_candidates)
+            else:
+                target_nb = min(int(cap), len(normal_b_candidates))
         normal_items = []
         if target_nb > 0 and normal_b_candidates:
             if target_nb <= len(normal_b_candidates):
@@ -419,6 +462,7 @@ class SiameseChromosomeDataset(Dataset):
             "abnormal_forward": len(abnormal_items),  # A正常B异常
             "abnormal_reverse": len(abnormal_items_reverse),  # A异常B正常（新增）
             "normal_pairs": len(normal_items),  # A正常B正常
+            "normal_b_candidates": len(normal_b_candidates),
             "skipped_no_homolog": skipped_no_homolog_ab,
             "multiplier": multiplier,
         }
@@ -484,9 +528,14 @@ class SiameseChromosomeDataset(Dataset):
         # A和B使用不同的随机种子，但同一对(A,B)内的img和mask使用相同种子
         seed_a = random.randint(0, 2**32 - 1)
         seed_b = random.randint(0, 2**32 - 1)
+        strong_same = bool(is_anomaly == 0)
         
-        tensor_img_A, tensor_mask_A = self._sync_transform(crop_img_A, crop_mask_A, seed=seed_a)
-        tensor_img_B, tensor_mask_B = self._sync_transform(crop_img_B, crop_mask_B, seed=seed_b)
+        tensor_img_A, tensor_mask_A = self._sync_transform(
+            crop_img_A, crop_mask_A, seed=seed_a, strong_same=strong_same
+        )
+        tensor_img_B, tensor_mask_B = self._sync_transform(
+            crop_img_B, crop_mask_B, seed=seed_b, strong_same=strong_same
+        )
 
         return {
             "img_A": tensor_img_A,

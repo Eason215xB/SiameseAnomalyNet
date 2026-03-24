@@ -44,7 +44,7 @@ def _metrics_from_cm(tn, fp, fn, tp):
 
 def visualize_training_samples(dataloader, log_path, num_batches=3, max_samples_per_batch=4):
     """
-    可视化训练样本(类似YOLO风格),保存前几个batch的输入图片和标签
+    可视化训练样本,保存前几个batch的输入图片和标签
     显示:单条A的标签、单条B的标签、一对的标签(是否有差异)
     Args:
         dataloader: 训练数据加载器
@@ -356,7 +356,7 @@ def main():
     if local_rank == 0:
         train_stats = train_dataset.get_stats()
         print("\n" + "="*60)
-        print("📊 训练集样本统计 (Siamese对称配对)")
+        print("📊 训练集样本统计")
         print("="*60)
         print(f"总样本数: {train_stats['total']}")
         print(f"  ├─ 有差异对 (label=1): {train_stats['label_1_pairs']} ({train_stats['label_1_pairs']/train_stats['total']*100:.1f}%)")
@@ -448,7 +448,7 @@ def main():
 
     model = DDP(model, device_ids=[local_rank], output_device=local_rank)
     
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([2.0]).to(device))
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([1.5]).to(device))
     
     # 1. 区分骨干网络和头部的参数
     backbone_params = []
@@ -466,7 +466,7 @@ def main():
     optimizer = optim.Adam([
         {'params': backbone_params, 'lr': base_lr * 0.1}, 
         {'params': head_params, 'lr': base_lr}
-    ], weight_decay=paras.get("weight_decay", 1e-3)) # 顺便将权重衰减(L2正则)提高到1e-3
+    ], weight_decay=paras.get("weight_decay", 1e-3))
     
     # 添加学习率调度器 - 当验证损失停滞时降低学习率
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(

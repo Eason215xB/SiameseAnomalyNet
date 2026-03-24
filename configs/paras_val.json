@@ -14,7 +14,7 @@
     "pretrained_path": "/home/algo002/work/SiameseAnomalyNet/pretrain/resnet18-f37072fd.pth",
     "dropout": 0.5,
     "early_stop_patience": 15,
-    "log_path": "./logs/AbnormalClass/Siamese-Merged-0323-2",
+    "log_path": "./logs/AbnormalClass/Siamese-Merged-0323-HomBlock-2",
     "model_path": "",
     
     "val_crop_offset": 4,

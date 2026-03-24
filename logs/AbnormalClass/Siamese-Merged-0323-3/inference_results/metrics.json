@@ -1,0 +1,29 @@
+{
+  "val_loss": 0.6021650611706402,
+  "backbone": "resnet18",
+  "dropout": 0.5,
+  "localization_dir": null,
+  "localization_saved_count": 0,
+  "save_localization": false,
+  "config_lr": 1e-05,
+  "accuracy": 0.6808528712198437,
+  "auc": 0.7533614666891577,
+  "f1_score": 0.6595995288574794,
+  "specificity": 0.7432891607203533,
+  "precision": 0.706658901184236,
+  "recall": 0.618416581719334,
+  "n_normal": 5886,
+  "n_abnormal": 5886,
+  "n_total": 11772,
+  "confusion_matrix": [
+    [
+      4375,
+      1511
+    ],
+    [
+      2246,
+      3640
+    ]
+  ],
+  "checkpoint": "/home/algo002/work/SiameseAnomalyNet/logs/AbnormalClass/Siamese-Merged-0323-2/best_siamese_model.pth"
+}

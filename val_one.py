@@ -24,9 +24,11 @@ from utils.dataloader import (
     IMAGENET_MEAN,
     IMAGENET_STD,
     SiameseChromosomeDataset,
+    get_train_data,
     get_val_data,
 )
 from utils.model import SiameseAnomalyNet
+from utils.bind_category import pair_sample_bind_category
 
 
 def _safe_filename_component(s):
@@ -293,6 +295,58 @@ def _metrics_from_cm(tn, fp, fn, tp):
     return acc, f1, specificity, precision, recall
 
 
+def _metrics_subset_binary(y_true, y_prob, y_pred):
+    """单个子集上的二分类指标（与全局相同定义）。"""
+    y_true = np.asarray(y_true, dtype=np.float64)
+    y_prob = np.asarray(y_prob, dtype=np.float64)
+    y_pred = np.asarray(y_pred, dtype=np.float64)
+    n = len(y_true)
+    if n == 0:
+        return None
+    acc = accuracy_score(y_true, y_pred)
+    if np.unique(y_true).size < 2:
+        auc = float("nan")
+    else:
+        try:
+            auc = roc_auc_score(y_true, y_prob)
+        except ValueError:
+            auc = float("nan")
+    try:
+        f1 = f1_score(y_true, y_pred, zero_division=0.0)
+    except ValueError:
+        f1 = 0.0
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    tn, fp, fn, tp = int(cm[0, 0]), int(cm[0, 1]), int(cm[1, 0]), int(cm[1, 1])
+    _, _, spec, prec, rec = _metrics_from_cm(tn, fp, fn, tp)
+    return {
+        "n": n,
+        "accuracy": float(acc),
+        "auc": auc,
+        "f1_score": float(f1),
+        "specificity": spec,
+        "precision": prec,
+        "recall": rec,
+        "confusion_matrix": [[tn, fp], [fn, tp]],
+    }
+
+
+def _metrics_by_bind_category(all_labels, all_probs, all_preds, all_cat):
+    """按 bind 粗类别（与 count_bind_types 一致）分组统计 pair 分类指标。"""
+    out = {}
+    y = np.asarray(all_labels, dtype=np.float64)
+    p = np.asarray(all_probs, dtype=np.float64)
+    ph = np.asarray(all_preds, dtype=np.float64)
+    c = np.asarray(all_cat, dtype=object)
+    for cat in sorted(set(all_cat)):
+        mask = c == cat
+        if not np.any(mask):
+            continue
+        m = _metrics_subset_binary(y[mask], p[mask], ph[mask])
+        if m is not None:
+            out[str(cat)] = m
+    return out
+
+
 @torch.no_grad()
 def run_val():
     parser = argparse.ArgumentParser(description="Siamese Anomaly Validation & Inference")
@@ -302,6 +356,13 @@ def run_val():
         "--no_save_localization",
         action="store_true",
         help="不保存异常定位可视化（默认保存到 log_path/inference_results/localization/）",
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        choices=("val", "train"),
+        default="val",
+        help="评估数据划分：val=验证(+test)集，train=训练集",
     )
     args = parser.parse_args()
     save_localization = not args.no_save_localization
@@ -313,9 +374,15 @@ def run_val():
     device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
     is_main = local_rank == 0
 
-    valid_val_cells = get_val_data(paras, test=True)
+    if args.split == "train":
+        eval_cells = get_train_data(paras)
+    else:
+        eval_cells = get_val_data(paras, test=True)
+    if local_rank == 0:
+        print(f"[eval] split={args.split}  cells={len(eval_cells)}", flush=True)
+
     val_dataset = SiameseChromosomeDataset(
-        valid_val_cells,
+        eval_cells,
         paras,
         resize=paras["patch_size"][0],
         is_train=False,
@@ -360,10 +427,11 @@ def run_val():
 
     criterion = nn.BCEWithLogitsLoss()
 
-    all_labels, all_probs, all_preds = [], [], []
+    all_labels, all_probs, all_preds, all_cat = [], [], [], []
     sum_loss, n_loss = 0.0, 0
     # 与权重路径无关：可视化默认写在配置里的 log_path 下（相对路径相对当前工作目录）
-    save_dir = os.path.abspath(os.path.join(paras["log_path"], "inference_results"))
+    _inf_name = "inference_results_train" if args.split == "train" else "inference_results"
+    save_dir = os.path.abspath(os.path.join(paras["log_path"], _inf_name))
     loc_dir = os.path.join(save_dir, "localization")
     n_loc_saved = 0
     if is_main:
@@ -394,11 +462,21 @@ def run_val():
         n_loss += 1
 
         probs = torch.sigmoid(logits).cpu().numpy().flatten()
-        preds = (probs > 0.5).astype(np.float32)
+        preds = (probs > 0.4).astype(np.float32)
+        labels_np = labels.cpu().numpy().flatten()
+        bs = int(labels_np.shape[0])
+        for i in range(bs):
+            la = batch["label_A"][i]
+            lb = batch["label_B"][i]
+            la = la.item() if torch.is_tensor(la) else float(la)
+            lb = lb.item() if torch.is_tensor(lb) else float(lb)
+            sa = _batch_optional_str(batch, "abnormal_content_A", i)
+            sb = _batch_optional_str(batch, "abnormal_content_B", i)
+            all_cat.append(pair_sample_bind_category(la, lb, sa, sb))
 
-        all_labels.extend(labels.cpu().numpy().flatten())
-        all_probs.extend(probs)
-        all_preds.extend(preds)
+        all_labels.extend(labels_np.tolist())
+        all_probs.extend(probs.tolist())
+        all_preds.extend(preds.tolist())
 
         if is_main and save_localization:
             img_A_cpu = batch["img_A"].cpu()
@@ -474,13 +552,16 @@ def run_val():
 
     if distributed:
         gathered = [None] * dist.get_world_size()
-        dist.all_gather_object(gathered, (all_labels, all_probs, all_preds, sum_loss, n_loss))
+        dist.all_gather_object(
+            gathered, (all_labels, all_probs, all_preds, all_cat, sum_loss, n_loss)
+        )
         if is_main:
             all_labels = [x for sub in gathered for x in sub[0]]
             all_probs = [x for sub in gathered for x in sub[1]]
             all_preds = [x for sub in gathered for x in sub[2]]
-            sum_loss = sum(sub[3] for sub in gathered)
-            n_loss = sum(sub[4] for sub in gathered)
+            all_cat = [x for sub in gathered for x in sub[3]]
+            sum_loss = sum(sub[4] for sub in gathered)
+            n_loss = sum(sub[5] for sub in gathered)
 
     if is_main:
         val_loss = sum_loss / n_loss if n_loss > 0 else 0.0
@@ -538,7 +619,43 @@ def run_val():
                 return None
             return float(x)
 
+        by_cat = _metrics_by_bind_category(all_labels, all_probs, all_preds, all_cat)
+        print(
+            "--- metrics by bind category (pair-level; class from abnormal text / NOR_pair) ---",
+            flush=True,
+        )
+        for cat in sorted(by_cat.keys()):
+            m = by_cat[cat]
+            auc_c = m["auc"]
+            auc_cs = f"{auc_c:.4f}" if isinstance(auc_c, float) and not math.isnan(auc_c) else "nan"
+            spec_c = m["specificity"]
+            prec_c = m["precision"]
+            rec_c = m["recall"]
+            spec_s = f"{spec_c:.4f}" if not math.isnan(spec_c) else "nan"
+            prec_s_c = f"{prec_c:.4f}" if not math.isnan(prec_c) else "nan"
+            rec_s_c = f"{rec_c:.4f}" if not math.isnan(rec_c) else "nan"
+            print(
+                f"  [{cat}] n={m['n']} acc={m['accuracy']:.4f} auc={auc_cs} "
+                f"f1={m['f1_score']:.4f} spec={spec_s} prec={prec_s_c} rec={rec_s_c} "
+                f"cm={m['confusion_matrix']}",
+                flush=True,
+            )
+
+        metrics_by_category_json = {}
+        for cat, m in by_cat.items():
+            metrics_by_category_json[cat] = {
+                "n": m["n"],
+                "accuracy": m["accuracy"],
+                "auc": _nan_to_none(m["auc"]),
+                "f1_score": m["f1_score"],
+                "specificity": _nan_to_none(m["specificity"]),
+                "precision": _nan_to_none(m["precision"]),
+                "recall": _nan_to_none(m["recall"]),
+                "confusion_matrix": m["confusion_matrix"],
+            }
+
         results = {
+            "eval_split": args.split,
             "val_loss": val_loss,
             "backbone": backbone,
             "dropout": dropout,
@@ -556,6 +673,7 @@ def run_val():
             "n_abnormal": n_pos,
             "n_total": n_total,
             "confusion_matrix": [[tn, fp], [fn, tp]],
+            "metrics_by_category": metrics_by_category_json,
             "checkpoint": args.ckpt,
         }
         with open(os.path.join(save_dir, "metrics.json"), "w", encoding="utf-8") as f:

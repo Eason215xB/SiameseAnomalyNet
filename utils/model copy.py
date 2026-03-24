@@ -16,14 +16,14 @@ class SharedEncoder(torch_nn.Module):
             in_channels: 输入通道数
             backbone: ResNet 类型 ('resnet18', 'resnet34', 'resnet50')
             pretrained: 是否使用 torchvision 自动下载的预训练权重
-            pretrained_path: 本地预训练权重路径（优先级高于 pretrained)
+            pretrained_path: 本地预训练权重路径（优先级高于 pretrained）
             dropout: Dropout 概率
         """
         super(SharedEncoder, self).__init__()
         
         # 加载预训练的 ResNet
         if backbone == 'resnet18':
-            resnet = models.resnet18(weights=None)
+            resnet = models.resnet18(weights=None)  # 先不加载权重
             self.out_channels = 512
         elif backbone == 'resnet34':
             resnet = models.resnet34(weights=None)
