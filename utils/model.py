@@ -103,6 +103,37 @@ class SharedEncoder(torch_nn.Module):
             x = self.dropout(x)
         return x
 
+# class CrossAttentionAlignment(torch_nn.Module):
+#     """
+#     交叉注意力对齐模块：用于克服染色体自由弯曲带来的空间不对齐。
+#     思想：以健康的染色体 A 为基准 (Query)，去异常染色体 B 中寻找相似的结构 (Key, Value) 并拼凑对齐。
+#     """
+#     def __init__(self, channels):
+#         super(CrossAttentionAlignment, self).__init__()
+#         self.query_conv = torch_nn.Conv2d(channels, channels // 8, kernel_size=1)
+#         self.key_conv = torch_nn.Conv2d(channels, channels // 8, kernel_size=1)
+#         self.value_conv = torch_nn.Conv2d(channels, channels, kernel_size=1)
+#         self.gamma = torch_nn.Parameter(torch.zeros(1)) # 可学习的残差缩放因子
+
+#     def forward(self, feat_A, feat_B):
+#         B, C, H, W = feat_A.size()
+        
+#         # 1. 将特征图展平为序列
+#         proj_query = self.query_conv(feat_A).view(B, -1, H * W).permute(0, 2, 1) # (B, N, C')
+#         proj_key = self.key_conv(feat_B).view(B, -1, H * W)                      # (B, C', N)
+#         proj_value = self.value_conv(feat_B).view(B, -1, H * W).permute(0, 2, 1) # (B, N, C)
+        
+#         # 2. 计算相似度矩阵 (Attention Map)
+#         attention = torch.bmm(proj_query, proj_key) # (B, N, N)
+#         attention = F.softmax(attention, dim=-1)
+        
+#         # 3. 根据相似度，重组 B 的特征来对齐 A
+#         aligned_B = torch.bmm(attention, proj_value) # (B, N, C)
+#         aligned_B = aligned_B.permute(0, 2, 1).view(B, C, H, W)
+        
+#         # 4. 残差连接
+#         out = self.gamma * aligned_B + feat_B
+#         return out
 
 class CrossAttentionAlignment(torch_nn.Module):
     """
@@ -153,6 +184,39 @@ class CrossAttentionAlignment(torch_nn.Module):
         
         return out
 
+# class HomBlock(torch_nn.Module):
+#     #   W-diff
+#     def __init__(self, channels, num_heads=8):
+#         super(HomBlock, self).__init__()
+#         # W_head 包含在 PyTorch 的 MultiheadAttention 的 out_proj 中
+#         # batch_first=True 允许输入输出的形状为 (Batch, Sequence, Features)
+#         self.multihead_attn = torch_nn.MultiheadAttention(
+#             embed_dim=channels, 
+#             num_heads=num_heads, 
+#             batch_first=True
+#         )
+#         # W_diff: 对残差融合后的特征进行线性映射
+#         self.W_diff = torch_nn.Conv2d(channels, channels, kernel_size=1)
+
+#     def forward(self, query_feat, key_value_feat):
+#         B, C, H, W = query_feat.size()
+        
+#         # 1. 展平为序列 Token 格式: (B, H*W, C)
+#         q = query_feat.view(B, C, -1).permute(0, 2, 1)
+#         k = key_value_feat.view(B, C, -1).permute(0, 2, 1)
+#         v = key_value_feat.view(B, C, -1).permute(0, 2, 1)
+        
+#         # 2. 多头注意力计算
+#         attn_output, _ = self.multihead_attn(q, k, v)
+        
+#         # 3. 还原为图像特征图维度: (B, C, H, W)
+#         aligned_feat = attn_output.permute(0, 2, 1).view(B, C, H, W)
+        
+#         # 4.  ˆr = W_diff(r + ˜r)
+#         out = self.W_diff(query_feat + aligned_feat)
+        
+        # return out
+
 
 class HomBlock(torch_nn.Module):
     #差值
@@ -163,7 +227,6 @@ class HomBlock(torch_nn.Module):
             num_heads=num_heads, 
             batch_first=True
         )
-        # 移除华而不实的 W_diff，我们强制网络只看差异！
 
     def forward(self, query_feat, key_value_feat):
         B, C, H, W = query_feat.size()
@@ -175,10 +238,8 @@ class HomBlock(torch_nn.Module):
         attn_output, _ = self.multihead_attn(q, k, v)
         aligned_feat = attn_output.permute(0, 2, 1).view(B, C, H, W)
         
-        # 核心修复：强制计算“绝对差值”！这是避免过拟合的定海神针
         diff = torch.abs(query_feat - aligned_feat)
         return diff
-
 
 class SiameseAnomalyNet(torch_nn.Module):
     """
@@ -198,11 +259,12 @@ class SiameseAnomalyNet(torch_nn.Module):
         
         # 3. 异常热力图生成器 (将差异特征降维到 1 个通道，即二维 Heatmap)
         self.W_hom = torch_nn.Sequential(
-            torch_nn.Conv2d(feat_channels * 2, feat_channels, kernel_size=3, padding=1),
+            torch_nn.Conv2d(feat_channels * 2, feat_channels, kernel_size=1),
             torch_nn.BatchNorm2d(feat_channels),
             torch_nn.ReLU(inplace=True),
             torch_nn.Dropout2d(p=dropout),
-            torch_nn.Conv2d(feat_channels, feat_channels // 4, kernel_size=3, padding=1),
+
+            torch_nn.Conv2d(feat_channels, feat_channels // 4, kernel_size=1),
             torch_nn.BatchNorm2d(feat_channels // 4),
             torch_nn.ReLU(inplace=True),
             torch_nn.Dropout2d(p=dropout/2),
@@ -211,6 +273,7 @@ class SiameseAnomalyNet(torch_nn.Module):
         
         # 4. 全局平均池化 (GAP) 用于图像级分类
         self.gap = torch_nn.AdaptiveAvgPool2d((1, 1))
+        self.gmp = torch_nn.AdaptiveMaxPool2d((1, 1))
 
     def forward(self, img_A, mask_A, img_B, mask_B):
         # --- 第一步：背景抑制 ---
@@ -221,26 +284,97 @@ class SiameseAnomalyNet(torch_nn.Module):
         feat_A = self.encoder(x_A)
         feat_B = self.encoder(x_B)
         
-        # --- 第三步：双向多头注意力对齐 (Bidirectional Alignment) ---
+        # --- 第三步：双向多头注意力对齐 ---
         # ˆR_{i,1} : A作为基准(Query)，去B中找对应特征(Key/Value)
         R_1 = self.aligner(query_feat=feat_A, key_value_feat=feat_B)
         
         # ˆR_{i,2} : B作为基准(Query)，去A中找对应特征(Key/Value)
         R_2 = self.aligner(query_feat=feat_B, key_value_feat=feat_A)
         
-        # --- 第四步：整合双向差异特征 (对应论文的 ˆR_{i,1} ⊕ ˆR_{i,2}) ---
-        # dim=1 表示在通道层面上进行 Concat (⊕)
+        # --- 第四步：整合双向差异特征 ---
+        # dim=1 表示在通道层面上进行 Concat
         concat_diff = torch.cat([R_1, R_2], dim=1) 
         
-        # --- 第五步：特征融合与降维 (对应论文的 W_hom) ---
+        # --- 第五步：特征融合与降维 ---
         # 融合后直接生成单通道的高亮异常图
-        heatmap = self.W_hom(concat_diff) 
+        heatmap = self.W_hom(concat_diff)  
         
-        # --- 第六步：特征展平分类 (对应论文的 Flat) ---
-        pooled = self.gap(heatmap) 
+        # --- 第六步：特征展平分类 ---
+        # 核心修正：GMP 捕捉局部极端病变，GAP 兼顾全局宏观差异
+        pooled_avg = self.gap(heatmap)
+        pooled_max = self.gmp(heatmap)
+        pooled = pooled_avg + pooled_max  # 双池化融合
+        
         logits = pooled.view(pooled.size(0), -1) 
 
         return logits, heatmap
+
+
+# class SiameseAnomalyNet(torch_nn.Module):
+#     """
+#     完整的双流异常检测网络 (弱监督定位版) - ResNet Backbone
+#     """
+#     def __init__(self, in_channels=3, backbone='resnet18', pretrained=False, 
+#                  pretrained_path=None, dropout=0.3):
+#         super(SiameseAnomalyNet, self).__init__()
+        
+#         # 1. 孪生特征提取器 (共享参数) - ResNet Backbone
+#         self.encoder = SharedEncoder(in_channels, backbone, pretrained, pretrained_path, dropout)
+        
+#         feat_channels = self.encoder.out_channels
+        
+#         # 2. 对齐模块
+#         self.aligner = CrossAttentionAlignment(channels=feat_channels)
+        
+#         # 3. 异常热力图生成器 (将差异特征降维到 1 个通道，即二维 Heatmap)
+#         self.heatmap_generator = torch_nn.Sequential(
+#             torch_nn.Conv2d(feat_channels, feat_channels // 2, kernel_size=3, padding=1),
+#             torch_nn.BatchNorm2d(feat_channels // 2),
+#             torch_nn.ReLU(inplace=True),
+#             torch_nn.Dropout2d(p=dropout),  # 取消除以2，直接使用 0.5 的高强度 Dropout
+#             torch_nn.Conv2d(feat_channels // 2, feat_channels // 4, kernel_size=3, padding=1),
+#             torch_nn.BatchNorm2d(feat_channels // 4),
+#             torch_nn.ReLU(inplace=True),
+#             torch_nn.Dropout2d(p=dropout/2), # 在第二层也加一点 Dropout
+#             torch_nn.Conv2d(feat_channels // 4, 1, kernel_size=1) 
+#         )
+        
+#         # 4. 全局平均池化 (GAP) 用于图像级分类
+#         self.gap = torch_nn.AdaptiveAvgPool2d((1, 1))
+
+#     def forward(self, img_A, mask_A, img_B, mask_B):
+#         """
+#         输入:
+#             img_A, img_B: 健康与同源异常染色体图像 (B, 1, H, W)
+#             mask_A, mask_B: 对应的整条染色体掩码 (B, 1, H, W)，值域需在 [0, 1] 之间
+#         """
+#         # --- 第一步：背景抑制 (利用现有的整条 Mask) ---
+#         # 明确告诉网络：只关注 Mask 为 1 的区域，屏蔽背景噪点
+#         x_A = img_A * mask_A
+#         x_B = img_B * mask_B
+        
+#         # --- 第二步：双流特征提取 (孪生网络) ---
+#         feat_A = self.encoder(x_A)
+#         feat_B = self.encoder(x_B)
+        
+#         # --- 第三步：交叉注意力对齐 ---
+#         # 克服两条染色体弯曲度不同的问题
+#         aligned_feat_B = self.aligner(feat_A=feat_A, feat_B=feat_B)
+        
+#         # --- 第四步：计算结构差异 ---
+#         # 只有在发生实质性结构异常（如缺失、易位）的地方，绝对误差才会很大
+#         diff_feat = torch.abs(feat_A - aligned_feat_B)
+        
+#         # --- 第五步：生成二维异常热力图 ---
+#         # 这是一张缩小的 2D 特征图，高亮区域即为网络“怀疑”的异常位置
+#         heatmap = self.heatmap_generator(diff_feat) # 形状: (B, 1, H', W')
+        
+#         # --- 第六步：弱监督分类 (GAP) ---
+#         # 将热力图压缩成一个标量，用于计算 BCE Loss
+#         pooled = self.gap(heatmap) # 形状: (B, 1, 1, 1)
+#         logits = pooled.view(pooled.size(0), -1) # 形状: (B, 1)
+        
+#         return logits, heatmap
 
 # ================= 测试运行与使用示例 =================
 if __name__ == "__main__":
