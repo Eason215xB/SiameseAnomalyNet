@@ -1,0 +1,39 @@
+2026-03-26 08:34:57 [INFO] DDP 初始化成功,world_size=4,日志目录=/home/algo002/work/SiameseAnomalyNet/logs/AbnormalClass/Siamese-Merged-0326-HomBlock-4
+2026-03-26 08:34:57 [INFO] 已保存解析后配置至 paras_resolved.json
+2026-03-26 08:34:57 [INFO] 正在进行 H5 数据集校验...
+2026-03-26 08:35:06 [INFO] ========================================
+2026-03-26 08:35:06 [INFO] 训练集样本统计
+2026-03-26 08:35:06 [INFO] ========================================
+2026-03-26 08:35:06 [INFO] 总样本数: 42988
+2026-03-26 08:35:06 [INFO]   ├─ 有差异对 (label=1): 21494 (50.0%)
+2026-03-26 08:35:06 [INFO]   │   ├─ A正常 vs B异常: 10747
+2026-03-26 08:35:06 [INFO]   │   └─ A异常 vs B正常: 10747
+2026-03-26 08:35:06 [INFO]   └─ 无差异对 (label=0): 21494 (50.0%)
+2026-03-26 08:35:06 [INFO]      └─ A正常 vs B正常: 21494
+2026-03-26 08:35:06 [INFO] 同源配对统计:
+2026-03-26 08:35:06 [INFO]   └─ 无同源正常被跳过的异常染色体: 657
+2026-03-26 08:35:06 [INFO] ============================================================
+2026-03-26 08:35:06 [INFO] 正在生成训练样本可视化(前 3 个 batch)...
+2026-03-26 08:35:10 [INFO]   Batch 0: 4 样本已保存
+2026-03-26 08:35:12 [INFO]   Batch 1: 4 样本已保存
+2026-03-26 08:35:15 [INFO]   Batch 2: 4 样本已保存
+2026-03-26 08:35:16 [INFO] 可视化完成,共 3 张图,保存至: ./logs/AbnormalClass/Siamese-Merged-0326-HomBlock-4/visualization
+2026-03-26 08:35:18 [INFO] ========================================
+2026-03-26 08:35:18 [INFO] 验证集样本统计
+2026-03-26 08:35:18 [INFO] ========================================
+2026-03-26 08:35:18 [INFO] 总样本数: 11772
+2026-03-26 08:35:18 [INFO]   ├─ 有差异对 (label=1): 5886 (50.0%)
+2026-03-26 08:35:18 [INFO]   │   ├─ A正常 vs B异常: 2943
+2026-03-26 08:35:18 [INFO]   │   └─ A异常 vs B正常: 2943
+2026-03-26 08:35:18 [INFO]   └─ 无差异对 (label=0): 5886 (50.0%)
+2026-03-26 08:35:18 [INFO]      └─ A正常 vs B正常: 5886
+2026-03-26 08:35:18 [INFO] ========================================
+2026-03-26 08:35:18 [INFO] 构建模型: backbone=resnet18, pretrained=True, pretrained_path=/home/algo002/work/SiameseAnomalyNet/pretrain/resnet18-f37072fd.pth, dropout=0.3
+2026-03-26 08:35:19 [INFO] 训练开始：保存代码与配置快照至 /home/algo002/work/SiameseAnomalyNet/logs/AbnormalClass/Siamese-Merged-0326-HomBlock-4
+2026-03-26 08:36:59 [INFO] lr=5e-06 | Epoch 1/500 | train_loss=0.7811 | train acc=0.5367 f1=0.6091 spec=0.3534 prec=0.5289 rec=0.7179 ||||| val_loss=0.7349 | val acc=0.5781 auc=0.6106 f1=0.6332 spec=0.4278 prec=0.5600 rec=0.7283 | early_stop=0/15 | BEST_SAVE AUC=0.6106
+2026-03-26 08:38:42 [INFO] lr=5e-06 | Epoch 2/500 | train_loss=0.7603 | train acc=0.5561 f1=0.6122 spec=0.4113 prec=0.5435 rec=0.7009 ||||| val_loss=0.7294 | val acc=0.5861 auc=0.6210 f1=0.6575 spec=0.3778 prec=0.5608 rec=0.7944 | early_stop=0/15 | BEST_SAVE AUC=0.6210
+2026-03-26 08:40:26 [INFO] lr=5e-06 | Epoch 3/500 | train_loss=0.7528 | train acc=0.5668 f1=0.6294 spec=0.4000 prec=0.5522 rec=0.7318 ||||| val_loss=0.7256 | val acc=0.5894 auc=0.6281 f1=0.6578 spec=0.3894 prec=0.5638 rec=0.7893 | early_stop=0/15 | BEST_SAVE AUC=0.6281
+2026-03-26 08:42:12 [INFO] lr=5e-06 | Epoch 4/500 | train_loss=0.7494 | train acc=0.5676 f1=0.6334 spec=0.3889 prec=0.5505 rec=0.7457 ||||| val_loss=0.7211 | val acc=0.5915 auc=0.6403 f1=0.6578 spec=0.3977 prec=0.5659 rec=0.7853 | early_stop=0/15 | BEST_SAVE AUC=0.6403
+2026-03-26 08:43:56 [INFO] lr=5e-06 | Epoch 5/500 | train_loss=0.7436 | train acc=0.5765 f1=0.6398 spec=0.3998 prec=0.5558 rec=0.7538 ||||| val_loss=0.7143 | val acc=0.5989 auc=0.6546 f1=0.6605 spec=0.4173 prec=0.5725 rec=0.7805 | early_stop=0/15 | BEST_SAVE AUC=0.6546
+2026-03-26 08:45:41 [INFO] lr=5e-06 | Epoch 6/500 | train_loss=0.7400 | train acc=0.5811 f1=0.6417 spec=0.4109 prec=0.5595 rec=0.7522 ||||| val_loss=0.7049 | val acc=0.6086 auc=0.6743 f1=0.6586 spec=0.4625 prec=0.5841 rec=0.7548 | early_stop=0/15 | BEST_SAVE AUC=0.6743
+2026-03-26 08:47:26 [INFO] lr=5e-06 | Epoch 7/500 | train_loss=0.7305 | train acc=0.5926 f1=0.6508 spec=0.4270 prec=0.5704 rec=0.7575 ||||| val_loss=0.6867 | val acc=0.6143 auc=0.7014 f1=0.6746 spec=0.4290 prec=0.5834 rec=0.7997 | early_stop=0/15 | BEST_SAVE AUC=0.7014

@@ -1,0 +1,56 @@
+2026-03-26 08:11:19 [INFO] DDP 初始化成功，world_size=4，日志目录=/home/algo002/work/SiameseAnomalyNet/logs/AbnormalClass/Siamese-Merged-0326-HomBlock-3
+2026-03-26 08:11:19 [INFO] 已保存解析后配置至 paras_resolved.json
+2026-03-26 08:11:19 [INFO] 正在进行 H5 数据集校验...
+2026-03-26 08:11:24 [INFO] ============================================================
+2026-03-26 08:11:24 [INFO] 训练集样本统计
+2026-03-26 08:11:24 [INFO] ============================================================
+2026-03-26 08:11:24 [INFO] 总样本数: 42988
+2026-03-26 08:11:24 [INFO]   ├─ 有差异对 (label=1): 21494 (50.0%)
+2026-03-26 08:11:24 [INFO]   │   ├─ A正常 vs B异常: 10747
+2026-03-26 08:11:24 [INFO]   │   └─ A异常 vs B正常: 10747
+2026-03-26 08:11:24 [INFO]   └─ 无差异对 (label=0): 21494 (50.0%)
+2026-03-26 08:11:24 [INFO]      └─ A正常 vs B正常: 21494
+2026-03-26 08:11:24 [INFO] 同源配对统计:
+2026-03-26 08:11:24 [INFO]   └─ 无同源正常被跳过的异常染色体: 657
+2026-03-26 08:11:24 [INFO] ============================================================
+2026-03-26 08:11:24 [INFO] 正在生成训练样本可视化(前 3 个 batch)...
+2026-03-26 08:11:26 [INFO]   Batch 0: 4 样本已保存
+2026-03-26 08:11:27 [INFO]   Batch 1: 4 样本已保存
+2026-03-26 08:11:29 [INFO]   Batch 2: 4 样本已保存
+2026-03-26 08:11:29 [INFO] 可视化完成，共 3 张图，保存至: ./logs/AbnormalClass/Siamese-Merged-0326-HomBlock-3/visualization
+2026-03-26 08:11:30 [INFO] ============================================================
+2026-03-26 08:11:30 [INFO] 验证集样本统计 (Siamese 对称配对)
+2026-03-26 08:11:30 [INFO] ============================================================
+2026-03-26 08:11:30 [INFO] 总样本数: 11772
+2026-03-26 08:11:30 [INFO]   ├─ 有差异对 (label=1): 5886 (50.0%)
+2026-03-26 08:11:30 [INFO]   │   ├─ A正常 vs B异常: 2943
+2026-03-26 08:11:30 [INFO]   │   └─ A异常 vs B正常: 2943
+2026-03-26 08:11:30 [INFO]   └─ 无差异对 (label=0): 5886 (50.0%)
+2026-03-26 08:11:30 [INFO]      └─ A正常 vs B正常: 5886
+2026-03-26 08:11:30 [INFO] ============================================================
+2026-03-26 08:11:30 [INFO] 构建模型: backbone=resnet18, pretrained=True, pretrained_path=/home/algo002/work/SiameseAnomalyNet/pretrain/resnet18-f37072fd.pth, dropout=0.5
+2026-03-26 08:11:31 [INFO] 训练开始：保存代码与配置快照至 /home/algo002/work/SiameseAnomalyNet/logs/AbnormalClass/Siamese-Merged-0326-HomBlock-3
+2026-03-26 08:12:43 [INFO] lr=5e-06 | Epoch 1/500 | train_loss=0.8099 | train acc=0.5061 f1=0.6162 spec=0.2182 prec=0.5022 rec=0.7971 ||||| val_loss=0.7814 | val acc=0.5003 auc=0.5864 f1=0.6667 spec=0.0007 prec=0.5001 rec=0.9998 | early_stop=0/15 | BEST_SAVE AUC=0.5864
+2026-03-26 08:13:54 [INFO] lr=5e-06 | Epoch 2/500 | train_loss=0.7947 | train acc=0.5213 f1=0.6191 spec=0.2641 prec=0.5134 rec=0.7796 ||||| val_loss=0.7822 | val acc=0.5014 auc=0.5937 f1=0.6670 spec=0.0039 prec=0.5007 rec=0.9988 | early_stop=1/15 | BEST_SAVE AUC=0.5937
+2026-03-26 08:15:07 [INFO] lr=5e-06 | Epoch 3/500 | train_loss=0.7914 | train acc=0.5255 f1=0.6264 spec=0.2551 prec=0.5162 rec=0.7966 ||||| val_loss=0.7760 | val acc=0.5148 auc=0.6001 f1=0.6702 spec=0.0437 prec=0.5076 rec=0.9859 | early_stop=0/15 | BEST_SAVE AUC=0.6001
+2026-03-26 08:16:20 [INFO] lr=5e-06 | Epoch 4/500 | train_loss=0.7857 | train acc=0.5383 f1=0.6381 spec=0.2626 prec=0.5248 rec=0.8138 ||||| val_loss=0.7765 | val acc=0.5150 auc=0.6021 f1=0.6706 spec=0.0430 prec=0.5077 rec=0.9871 | early_stop=1/15 | BEST_SAVE AUC=0.6021
+2026-03-26 08:17:33 [INFO] lr=5e-06 | Epoch 5/500 | train_loss=0.7853 | train acc=0.5375 f1=0.6400 spec=0.2525 prec=0.5237 rec=0.8228 ||||| val_loss=0.7717 | val acc=0.5351 auc=0.6035 f1=0.6756 spec=0.1018 prec=0.5188 rec=0.9684 | early_stop=0/15 | BEST_SAVE AUC=0.6035
+2026-03-26 08:18:44 [INFO] lr=5e-06 | Epoch 6/500 | train_loss=0.7806 | train acc=0.5470 f1=0.6492 spec=0.2561 prec=0.5305 rec=0.8363 ||||| val_loss=0.7698 | val acc=0.5453 auc=0.6052 f1=0.6778 spec=0.1339 prec=0.5248 rec=0.9567 | early_stop=0/15 | BEST_SAVE AUC=0.6052
+2026-03-26 08:19:57 [INFO] lr=5e-06 | Epoch 7/500 | train_loss=0.7784 | train acc=0.5524 f1=0.6510 spec=0.2700 prec=0.5337 rec=0.8344 ||||| val_loss=0.7657 | val acc=0.5629 auc=0.6074 f1=0.6810 spec=0.1923 prec=0.5361 rec=0.9334 | early_stop=0/15 | BEST_SAVE AUC=0.6074
+2026-03-26 08:21:09 [INFO] lr=5e-06 | Epoch 8/500 | train_loss=0.7769 | train acc=0.5572 f1=0.6591 spec=0.2600 prec=0.5381 rec=0.8504 ||||| val_loss=0.7657 | val acc=0.5630 auc=0.6084 f1=0.6818 spec=0.1896 prec=0.5361 rec=0.9365 | early_stop=1/15 | BEST_SAVE AUC=0.6084
+2026-03-26 08:22:25 [INFO] lr=5e-06 | Epoch 9/500 | train_loss=0.7765 | train acc=0.5560 f1=0.6518 spec=0.2782 prec=0.5331 rec=0.8386 ||||| val_loss=0.7622 | val acc=0.5708 auc=0.6087 f1=0.6814 spec=0.2236 prec=0.5418 rec=0.9179 | early_stop=0/15 | BEST_SAVE AUC=0.6087
+2026-03-26 08:23:39 [INFO] lr=5e-06 | Epoch 10/500 | train_loss=0.7752 | train acc=0.5603 f1=0.6603 spec=0.2670 prec=0.5392 rec=0.8515 ||||| val_loss=0.7652 | val acc=0.5578 auc=0.6093 f1=0.6816 spec=0.1694 prec=0.5326 rec=0.9463 | early_stop=1/15 | BEST_SAVE AUC=0.6093
+2026-03-26 08:24:50 [INFO] lr=5e-06 | Epoch 11/500 | train_loss=0.7745 | train acc=0.5598 f1=0.6602 spec=0.2652 prec=0.5389 rec=0.8519 ||||| val_loss=0.7623 | val acc=0.5698 auc=0.6111 f1=0.6833 spec=0.2117 prec=0.5407 rec=0.9280 | early_stop=2/15 | BEST_SAVE AUC=0.6111
+2026-03-26 08:26:11 [INFO] lr=5e-06 | Epoch 12/500 | train_loss=0.7733 | train acc=0.5625 f1=0.6605 spec=0.2731 prec=0.5387 rec=0.8537 ||||| val_loss=0.7596 | val acc=0.5788 auc=0.6112 f1=0.6846 spec=0.2433 prec=0.5472 rec=0.9144 | early_stop=0/15 | BEST_SAVE AUC=0.6112
+2026-03-26 08:28:01 [INFO] lr=5e-06 | Epoch 13/500 | train_loss=0.7732 | train acc=0.5640 f1=0.6616 spec=0.2751 prec=0.5400 rec=0.8538 ||||| val_loss=0.7588 | val acc=0.5844 auc=0.6139 f1=0.6850 spec=0.2647 prec=0.5515 rec=0.9040 | early_stop=0/15 | BEST_SAVE AUC=0.6139
+2026-03-26 08:29:42 [INFO] lr=5e-06 | Epoch 14/500 | train_loss=0.7709 | train acc=0.5678 f1=0.6649 spec=0.2780 prec=0.5430 rec=0.8576 ||||| val_loss=0.7572 | val acc=0.5854 auc=0.6141 f1=0.6850 spec=0.2691 prec=0.5523 rec=0.9016 | early_stop=0/15 | BEST_SAVE AUC=0.6141
+2026-03-26 08:31:26 [INFO] lr=5e-06 | Epoch 15/500 | train_loss=0.7699 | train acc=0.5713 f1=0.6662 spec=0.2864 prec=0.5450 rec=0.8568 ||||| val_loss=0.7591 | val acc=0.5773 auc=0.6152 f1=0.6859 spec=0.2317 prec=0.5457 rec=0.9229 | early_stop=1/15 | BEST_SAVE AUC=0.6152
+2026-03-26 08:33:10 [INFO] lr=5e-06 | Epoch 16/500 | train_loss=0.7687 | train acc=0.5751 f1=0.6689 spec=0.2918 prec=0.5482 rec=0.8578 ||||| val_loss=0.7561 | val acc=0.5862 auc=0.6166 f1=0.6854 spec=0.2710 prec=0.5529 rec=0.9015 | early_stop=0/15 | BEST_SAVE AUC=0.6166
+2026-03-26 08:34:25 [INFO] lr=5e-06 | Epoch 17/500 | train_loss=0.7701 | train acc=0.5701 f1=0.6634 spec=0.2906 prec=0.5422 rec=0.8544 ||||| val_loss=0.7551 | val acc=0.5906 auc=0.6174 f1=0.6816 spec=0.3046 prec=0.5576 rec=0.8765 | early_stop=0/15 | BEST_SAVE AUC=0.6174
+2026-03-26 08:35:56 [INFO] lr=5e-06 | Epoch 18/500 | train_loss=0.7689 | train acc=0.5752 f1=0.6717 spec=0.2831 prec=0.5495 rec=0.8639 ||||| val_loss=0.7549 | val acc=0.5924 auc=0.6188 f1=0.6864 spec=0.2926 prec=0.5578 rec=0.8923 | early_stop=0/15 | BEST_SAVE AUC=0.6188
+2026-03-26 08:37:39 [INFO] lr=5e-06 | Epoch 19/500 | train_loss=0.7695 | train acc=0.5712 f1=0.6655 spec=0.2879 prec=0.5440 rec=0.8570 ||||| val_loss=0.7565 | val acc=0.5857 auc=0.6219 f1=0.6871 spec=0.2616 prec=0.5520 rec=0.9098 | early_stop=1/15 | BEST_SAVE AUC=0.6219
+2026-03-26 08:39:21 [INFO] lr=5e-06 | Epoch 20/500 | train_loss=0.7674 | train acc=0.5770 f1=0.6709 spec=0.2915 prec=0.5489 rec=0.8626 ||||| val_loss=0.7526 | val acc=0.5933 auc=0.6254 f1=0.6833 spec=0.3090 prec=0.5595 rec=0.8775 | early_stop=0/15 | BEST_SAVE AUC=0.6254
+2026-03-26 08:41:07 [INFO] lr=5e-06 | Epoch 21/500 | train_loss=0.7664 | train acc=0.5793 f1=0.6733 spec=0.2936 prec=0.5527 rec=0.8613 ||||| val_loss=0.7525 | val acc=0.5929 auc=0.6321 f1=0.6890 spec=0.2841 prec=0.5574 rec=0.9018 | early_stop=0/15 | BEST_SAVE AUC=0.6321
+2026-03-26 08:42:50 [INFO] lr=5e-06 | Epoch 22/500 | train_loss=0.7679 | train acc=0.5755 f1=0.6683 spec=0.2955 prec=0.5480 rec=0.8562 ||||| val_loss=0.7522 | val acc=0.5928 auc=0.6462 f1=0.6826 spec=0.3099 prec=0.5593 rec=0.8758 | early_stop=0/15 | BEST_SAVE AUC=0.6462
+2026-03-26 08:44:40 [INFO] lr=5e-06 | Epoch 23/500 | train_loss=0.7634 | train acc=0.5812 f1=0.6739 spec=0.2967 prec=0.5517 rec=0.8656 ||||| val_loss=0.7457 | val acc=0.5955 auc=0.6696 f1=0.6831 spec=0.3189 prec=0.5615 rec=0.8721 | early_stop=0/15 | BEST_SAVE AUC=0.6696
+2026-03-26 08:46:19 [INFO] lr=5e-06 | Epoch 24/500 | train_loss=0.7612 | train acc=0.5801 f1=0.6712 spec=0.3011 prec=0.5494 rec=0.8624 ||||| val_loss=0.7379 | val acc=0.6002 auc=0.6867 f1=0.6797 spec=0.3522 prec=0.5670 rec=0.8483 | early_stop=0/15 | BEST_SAVE AUC=0.6867

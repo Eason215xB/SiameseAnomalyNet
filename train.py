@@ -225,7 +225,7 @@ def visualize_training_samples(dataloader, log_path, logger, num_batches=3, max_
         logger.info("  Batch %d: %d 样本已保存", batch_idx, n_samples)
         batch_count += 1
     
-    logger.info("可视化完成，共 %d 张图，保存至: %s", batch_count, vis_dir)
+    logger.info("可视化完成,共 %d 张图,保存至: %s", batch_count, vis_dir)
 
 
 #--------------训练---------------
@@ -399,7 +399,7 @@ def main():
         log_path = os.path.abspath(paras["log_path"])
         os.makedirs(log_path, exist_ok=True)
         logger.info(
-            "DDP 初始化成功，world_size=%d，日志目录=%s",
+            "DDP 初始化成功,world_size=%d,日志目录=%s",
             dist.get_world_size(),
             log_path,
         )
@@ -450,9 +450,9 @@ def main():
         tot = train_stats["total"]
         p1 = (100.0 * train_stats["label_1_pairs"] / tot) if tot else 0.0
         p0 = (100.0 * train_stats["label_0_pairs"] / tot) if tot else 0.0
-        logger.info("%s", "=" * 60)
+        logger.info("%s", "=" * 40)
         logger.info("训练集样本统计")
-        logger.info("%s", "=" * 60)
+        logger.info("%s", "=" * 40)
         logger.info("总样本数: %s", train_stats["total"])
         logger.info(
             "  ├─ 有差异对 (label=1): %s (%.1f%%)",
@@ -517,9 +517,9 @@ def main():
         vtot = val_stats["total"]
         vp1 = (100.0 * val_stats["label_1_pairs"] / vtot) if vtot else 0.0
         vp0 = (100.0 * val_stats["label_0_pairs"] / vtot) if vtot else 0.0
-        logger.info("%s", "=" * 60)
-        logger.info("验证集样本统计 (Siamese 对称配对)")
-        logger.info("%s", "=" * 60)
+        logger.info("%s", "=" * 40)
+        logger.info("验证集样本统计")
+        logger.info("%s", "=" * 40)
         logger.info("总样本数: %s", val_stats["total"])
         logger.info(
             "  ├─ 有差异对 (label=1): %s (%.1f%%)",
@@ -534,7 +534,7 @@ def main():
             vp0,
         )
         logger.info("     └─ A正常 vs B正常: %s", val_stats["normal_pairs"])
-        logger.info("%s", "=" * 60)
+        logger.info("%s", "=" * 40)
         
         val_loader = DataLoader(
             val_dataset, 
@@ -573,7 +573,7 @@ def main():
 
     model = DDP(model, device_ids=[local_rank], output_device=local_rank)
     
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([1.0]).to(device))
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([1.2]).to(device))
     
     # 1. 区分骨干网络和头部的参数
     backbone_params = []

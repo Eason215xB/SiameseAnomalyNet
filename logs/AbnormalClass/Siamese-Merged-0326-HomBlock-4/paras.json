@@ -1,0 +1,73 @@
+{
+    "fold": 0,
+    "seed": 42,
+    "num_workers": 16,
+    "batch_size": 32,
+    "num_epochs": 500,
+    "patch_size": [96, 96],
+    "normal_b_multiplier": 2.0,
+    "learning_rate": 5e-5,
+    "weight_decay": 1e-3,
+    
+    "backbone": "resnet18",
+    "pretrained": true,
+    "pretrained_path": "/home/algo002/work/SiameseAnomalyNet/pretrain/resnet18-f37072fd.pth",
+    "dropout": 0.3,
+    "invert_p": 0.5,
+    "early_stop_patience": 15,
+    "log_path": "./logs/AbnormalClass/Siamese-Merged-0326-HomBlock-4",
+    "model_path": "",
+    
+    "val_crop_offset": 4,
+    "pin_memory": true,
+    
+    "h5_files": {
+        "image": "/data_b/algo001/dataset/image-PB-abnormal-test.h5",
+        "annotation": "/data_b/algo001/dataset/annotation-PB-abnormal-test.h5"
+    },
+    
+    "dataset": [
+        "/data_b/algo001/cvat/202511_abnormal/ztask_0/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_1/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_2/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_3/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_4/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_5/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_6/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_7/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_8/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_9/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_10/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_11/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_12/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_13/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_14/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_15/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_16/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_17/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_18/dataset.key.json"
+    ],
+    
+    "val_dataset": [
+        "/data_b/algo001/cvat/202511_abnormal/ztask_0/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_1/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_2/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_3/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_4/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_5/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_6/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_7/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_8/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_9/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_10/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_11/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_12/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_13/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_14/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_15/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_16/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_17/dataset.key.json",
+        "/data_b/algo001/cvat/202511_abnormal/ztask_18/dataset.key.json"
+    ]
+
+}
