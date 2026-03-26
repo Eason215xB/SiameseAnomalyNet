@@ -745,12 +745,12 @@ def run_val():
                     dark_mean_thresh=dark_thresh,
                 )
                 base = (
-                    f"{na}__{nb}__abA_{pa}__abB_{pb}__tgt_{side}_"
+                    f"{na}__abA_{pa}__abB_{pb}__tgt_{side}_"
                     f"p{probs[i]:.3f}_gt{labels[i].item():.0f}_loc.jpg"
                 )
                 if len(base.encode("utf-8")) > 220:
                     short = hashlib.sha256(
-                        f"{na}|{nb}|{pa}|{pb}|{side}".encode("utf-8")
+                        f"{na}|{pa}|{pb}|{side}".encode("utf-8")
                     ).hexdigest()[:16]
                     base = (
                         f"{short}__abA_{pa[:40]}__abB_{pb[:40]}__tgt_{side}_"
