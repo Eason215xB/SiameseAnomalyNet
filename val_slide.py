@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import io
 import os
 import json
@@ -41,7 +38,7 @@ from utils.dataloader import (
 from utils.model import SiameseAnomalyNet
 from utils.bind_category import pair_sample_bind_category
 
-# slide 预测：该 slide 内 pair 预测为 1 的比例 >= X% 则 slide 预测为 1
+
 SLIDE_PRED_PCT_THRESHOLDS = list(range(50, 81, 5))  # 50, 55, ..., 80
 
 

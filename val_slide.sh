@@ -5,6 +5,6 @@ cd "$(dirname "$0")"
 
 python val_slide.py \
   --config ./configs/paras_val.json \
-  --ckpt ./logs/AbnormalClass/Siamese-Merged-0323-HomBlock-2/best_siamese_model.pth \
+  --ckpt ./logs/AbnormalClass/Siamese-Merged-0323-HomBlock/best_siamese_model.pth \
   --split val \
   --no_save_localization
