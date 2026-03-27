@@ -5,6 +5,10 @@ from torchvision import models
 
 
 class SharedEncoder(torch_nn.Module):
+    """
+    孪生编码器:流 A 和 流 B 共享这个网络。
+    使用 ResNet18/34/50 作为 backbone 提取染色体的深度语义特征。
+    """
     def __init__(self, in_channels=3, backbone='resnet18', pretrained=False, 
                  pretrained_path=None, dropout=0.3):
         """
@@ -17,22 +21,27 @@ class SharedEncoder(torch_nn.Module):
         """
         super(SharedEncoder, self).__init__()
         
+        # 加载预训练的 ResNet
         if backbone == 'resnet18':
             resnet = models.resnet18(weights=None)
-            self.out_channels = 512
+            self.out_channels = 256
         elif backbone == 'resnet34':
             resnet = models.resnet34(weights=None)
-            self.out_channels = 512
+            self.out_channels = 256
         elif backbone == 'resnet50':
             resnet = models.resnet50(weights=None)
-            self.out_channels = 2048
+            self.out_channels = 1024
         else:
             raise ValueError(f"Unsupported backbone: {backbone}")
         
+        # 加载预训练权重（优先使用本地路径）
         if pretrained_path and pretrained_path.strip():
+            # 从本地路径加载
             print(f"Loading pretrained weights from local path: {pretrained_path}")
             state_dict = torch.load(pretrained_path, map_location='cpu')
+            # 处理可能的 'module.' 前缀（来自 DDP 训练）
             state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+            # 尝试加载，忽略不匹配的层（如 fc 层）
             missing_keys, unexpected_keys = resnet.load_state_dict(state_dict, strict=False)
             if missing_keys:
                 print(f"  Missing keys (will be randomly initialized): {len(missing_keys)} keys")
@@ -40,6 +49,7 @@ class SharedEncoder(torch_nn.Module):
                 print(f"  Unexpected keys (ignored): {len(unexpected_keys)} keys")
             print(f"  Loaded pretrained weights successfully")
         elif pretrained:
+            # 从 torchvision 下载
             print(f"Loading pretrained {backbone} from torchvision")
             if backbone == 'resnet18':
                 weights = models.ResNet18_Weights.DEFAULT
@@ -51,7 +61,9 @@ class SharedEncoder(torch_nn.Module):
                      models.resnet34(weights=weights) if backbone == 'resnet34' else \
                      models.resnet50(weights=weights)
         
+        # 适配输入通道数（ResNet 默认是 3 通道）
         if in_channels != 3:
+            # 替换第一层卷积以适配不同的输入通道
             first_conv = resnet.conv1
             resnet.conv1 = torch_nn.Conv2d(
                 in_channels, 
@@ -61,6 +73,7 @@ class SharedEncoder(torch_nn.Module):
                 padding=first_conv.padding,
                 bias=first_conv.bias
             )
+            # 可选:用原 3 通道权重的平均来初始化新通道
             if (pretrained or pretrained_path is not None) and in_channels < 3:
                 with torch.no_grad():
                     resnet.conv1.weight[:] = first_conv.weight[:, :in_channels, :, :]
@@ -75,9 +88,10 @@ class SharedEncoder(torch_nn.Module):
             resnet.layer1,   # 1/4
             resnet.layer2,   # 1/8
             resnet.layer3,   # 1/16
-            resnet.layer4,   # 1/32
+            # resnet.layer4,   # 1/32
         )
         
+        # Dropout 用于正则化
         self.dropout = torch_nn.Dropout2d(p=dropout) if dropout > 0 else None
 
         for param in self.encoder[0:6].parameters(): # 冻结 conv1 到 layer2

@@ -18,7 +18,7 @@ from sklearn.metrics import accuracy_score, roc_auc_score, f1_score, confusion_m
 from tqdm import tqdm
 
 from utils.dataloader import get_train_data, get_val_data, SiameseChromosomeDataset
-from utils.model import SiameseAnomalyNet
+from utils.model_train import SiameseAnomalyNet
 
 import matplotlib
 
@@ -106,8 +106,8 @@ def _save_train_code_snapshot(log_path, config_path):
     """复制 train.py、utils/model.py、当前使用的配置文件到 log_path。"""
     shutil.copy2(os.path.join(_REPO_ROOT, "train.py"), os.path.join(log_path, "train.py"))
     shutil.copy2(
-        os.path.join(_REPO_ROOT, "utils", "model.py"),
-        os.path.join(log_path, "model.py"),
+        os.path.join(_REPO_ROOT, "utils", "model_train.py"),
+        os.path.join(log_path, "model_train.py"),
     )
     shutil.copy2(os.path.abspath(config_path), os.path.join(log_path, "paras.json"))
 
@@ -139,7 +139,6 @@ def visualize_training_samples(dataloader, log_path, logger, num_batches=3, max_
     IMAGENET_STD = np.array([1.0, 1.0, 1.0])
     
     def denormalize(tensor):
-        """将归一化的tensor还原为可视化格式"""
         tensor = tensor.cpu().clone()
         for t, m, s in zip(tensor, IMAGENET_MEAN, IMAGENET_STD):
             t.mul_(s).add_(m)
@@ -615,10 +614,12 @@ def main():
 
     # 2. 设置差异化学习率 (骨干网络学习率缩小 10 倍)
     base_lr = paras["learning_rate"]
-    optimizer = optim.Adam([
-        {'params': backbone_params, 'lr': base_lr * 0.1}, 
-        {'params': head_params, 'lr': base_lr}
-    ], weight_decay=paras.get("weight_decay", 1e-3))
+    # optimizer = optim.Adam([
+    #     {'params': backbone_params, 'lr': base_lr * 0.1}, 
+    #     {'params': head_params, 'lr': base_lr}
+    # ], weight_decay=paras.get("weight_decay", 1e-3))
+    # 推荐的统一优化器写法：
+    optimizer = torch.optim.AdamW(model.parameters(), lr=paras["learning_rate"], weight_decay=paras["weight_decay"])
     
     # 添加学习率调度器
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -772,16 +773,23 @@ def main():
                     ]
                 )
             
-            # 触发早停
-            if early_stop_counter >= early_stop_patience:
+            # 仅 rank0 更新早停计数；是否停止需广播到所有 rank，否则 rank0 先 break 会跳过 barrier，其余 rank 死等 NCCL
+            stop_now = early_stop_counter >= early_stop_patience
+        else:
+            stop_now = False
+
+        stop_tensor = torch.tensor([1 if stop_now else 0], dtype=torch.int32, device=device)
+        dist.broadcast(stop_tensor, src=0)
+        dist.barrier()
+
+        if int(stop_tensor.item()) == 1:
+            if local_rank == 0:
                 logger.info(
                     "Early stopping triggered at epoch %d (no improvement for %d epochs)",
                     epoch + 1,
                     early_stop_patience,
                 )
-                break
-
-        dist.barrier()
+            break
 
     if local_rank == 0:
         tail = []

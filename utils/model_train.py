@@ -80,8 +80,8 @@ class SharedEncoder(torch_nn.Module):
         
         self.dropout = torch_nn.Dropout2d(p=dropout) if dropout > 0 else None
 
-        for param in self.encoder[0:6].parameters(): # 冻结 conv1 到 layer2
-            param.requires_grad = False
+        # for param in self.encoder[0:6].parameters(): # 冻结 conv1 到 layer2
+        #     param.requires_grad = False
 
     def forward(self, x):
         x = self.encoder(x)
