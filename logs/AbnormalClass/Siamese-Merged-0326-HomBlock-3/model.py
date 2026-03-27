@@ -5,10 +5,6 @@ from torchvision import models
 
 
 class SharedEncoder(torch_nn.Module):
-    """
-    孪生编码器：流 A 和 流 B 共享这个网络。
-    使用 ResNet18/34/50 作为 backbone 提取染色体的深度语义特征。
-    """
     def __init__(self, in_channels=3, backbone='resnet18', pretrained=False, 
                  pretrained_path=None, dropout=0.3):
         """
@@ -23,18 +19,17 @@ class SharedEncoder(torch_nn.Module):
         
         if backbone == 'resnet18':
             resnet = models.resnet18(weights=None)
-            self.out_channels = 256
+            self.out_channels = 512
         elif backbone == 'resnet34':
             resnet = models.resnet34(weights=None)
-            self.out_channels = 256
+            self.out_channels = 512
         elif backbone == 'resnet50':
             resnet = models.resnet50(weights=None)
-            self.out_channels = 1024
+            self.out_channels = 2048
         else:
             raise ValueError(f"Unsupported backbone: {backbone}")
         
         if pretrained_path and pretrained_path.strip():
-            # 从本地路径加载
             print(f"Loading pretrained weights from local path: {pretrained_path}")
             state_dict = torch.load(pretrained_path, map_location='cpu')
             state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
@@ -66,12 +61,12 @@ class SharedEncoder(torch_nn.Module):
                 padding=first_conv.padding,
                 bias=first_conv.bias
             )
-
             if (pretrained or pretrained_path is not None) and in_channels < 3:
                 with torch.no_grad():
                     resnet.conv1.weight[:] = first_conv.weight[:, :in_channels, :, :]
         
-
+        # 使用 ResNet 的前四层（去掉最后的全局池化和全连接层）
+        # 输出 stride = 32，即输入 96x96 会输出 3x3 的特征图
         self.encoder = torch_nn.Sequential(
             resnet.conv1,    # 1/2
             resnet.bn1,
@@ -80,10 +75,9 @@ class SharedEncoder(torch_nn.Module):
             resnet.layer1,   # 1/4
             resnet.layer2,   # 1/8
             resnet.layer3,   # 1/16
-            # resnet.layer4,   # 1/32
+            resnet.layer4,   # 1/32
         )
         
-        # Dropout 用于正则化
         self.dropout = torch_nn.Dropout2d(p=dropout) if dropout > 0 else None
 
         for param in self.encoder[0:6].parameters(): # 冻结 conv1 到 layer2
@@ -95,12 +89,8 @@ class SharedEncoder(torch_nn.Module):
             x = self.dropout(x)
         return x
 
+
 class CrossAttentionAlignment(torch_nn.Module):
-    """
-    多头交叉注意力对齐模块 (Multi-Head Cross Attention)：
-    用于克服染色体自由弯曲带来的空间不对齐。
-    以健康的染色体 A 为基准 (Query)，去异常染色体 B 中寻找相似的结构 (Key, Value) 并拼凑对齐。
-    """
     def __init__(self, channels, num_heads=8):
         """
         Args:
@@ -108,35 +98,24 @@ class CrossAttentionAlignment(torch_nn.Module):
             num_heads: 多头注意力的头数，要求 channels 必须能被 num_heads 整除
         """
         super(CrossAttentionAlignment, self).__init__()
-        
-        # 使用 PyTorch 官方高度优化的多头注意力机制
-        # batch_first=True 允许输入张量形状为 (Batch, Sequence_Length, Features)
+
         self.multihead_attn = torch_nn.MultiheadAttention(
             embed_dim=channels, 
             num_heads=num_heads, 
             batch_first=True
         )
         
-        # 可学习的残差缩放因子
         self.gamma = torch_nn.Parameter(torch.zeros(1)) 
 
     def forward(self, feat_A, feat_B):
         B, C, H, W = feat_A.size()
         
-        # 1. 展平空间维度，将特征图转化为 Transformer 标准的序列 (Token) 输入
-        # 形状转换: (B, C, H, W) -> (B, C, H*W) -> (B, H*W, C)
-        # 这里的 H*W 就是序列长度 (Sequence Length)，C 是特征维度 (Embedding Dim)
         query = feat_A.view(B, C, -1).permute(0, 2, 1)
         key   = feat_B.view(B, C, -1).permute(0, 2, 1)
         value = feat_B.view(B, C, -1).permute(0, 2, 1)
         
-        # 2. 计算多头交叉注意力
-        # query 是基准 A，key 和 value 是目标 B
-        # attn_output 形状: (B, H*W, C)
         attn_output, _ = self.multihead_attn(query, key, value)
         
-        # 3. 将对齐后的序列特征还原回 2D 空间特征图格式
-        # 形状转换: (B, H*W, C) -> (B, C, H*W) -> (B, C, H, W)
         aligned_B = attn_output.permute(0, 2, 1).view(B, C, H, W)
         
         out = self.gamma * aligned_B + feat_B
@@ -168,23 +147,18 @@ class HomBlock(torch_nn.Module):
         diff = torch.abs(query_feat - aligned_feat)
         return diff
 
+
 class SiameseAnomalyNet(torch_nn.Module):
-    """
-    完整的双流异常检测网络 (弱监督定位版) - ResNet Backbone
-    """
     def __init__(self, in_channels=3, backbone='resnet18', pretrained=False, 
                  pretrained_path=None, dropout=0.3):
         super(SiameseAnomalyNet, self).__init__()
         
-        # 1. 孪生特征提取器 (共享参数) - ResNet Backbone
         self.encoder = SharedEncoder(in_channels, backbone, pretrained, pretrained_path, dropout)
         
         feat_channels = self.encoder.out_channels
         
-        # 2. 对齐模块
         self.aligner = HomBlock(channels=feat_channels, num_heads=8)
         
-        # 3. 异常热力图生成器 (将差异特征降维到 1 个通道，即二维 Heatmap)
         self.W_hom = torch_nn.Sequential(
             torch_nn.Conv2d(feat_channels * 2, feat_channels, kernel_size=1),
             torch_nn.BatchNorm2d(feat_channels),
@@ -195,140 +169,31 @@ class SiameseAnomalyNet(torch_nn.Module):
             torch_nn.BatchNorm2d(feat_channels // 4),
             torch_nn.ReLU(inplace=True),
             torch_nn.Dropout2d(p=dropout/2),
-            torch_nn.Conv2d(feat_channels // 4, 1, kernel_size=1)  # 最终输出单通道异常 Heatmap
+            torch_nn.Conv2d(feat_channels // 4, 1, kernel_size=1)
         )
         
-        # 4. 全局平均池化 (GAP) 用于图像级分类
         self.gap = torch_nn.AdaptiveAvgPool2d((1, 1))
         self.gmp = torch_nn.AdaptiveMaxPool2d((1, 1))
 
     def forward(self, img_A, mask_A, img_B, mask_B):
-        # --- 第一步：背景抑制 ---
         x_A = img_A * mask_A
         x_B = img_B * mask_B
-        
-        # --- 第二步：双流特征提取 ---
+
         feat_A = self.encoder(x_A)
         feat_B = self.encoder(x_B)
         
-        # --- 第三步：双向多头注意力对齐 ---
-        # ˆR_{i,1} : A作为基准(Query)，去B中找对应特征(Key/Value)
         R_1 = self.aligner(query_feat=feat_A, key_value_feat=feat_B)
         
-        # ˆR_{i,2} : B作为基准(Query)，去A中找对应特征(Key/Value)
         R_2 = self.aligner(query_feat=feat_B, key_value_feat=feat_A)
         
-        # --- 第四步：整合双向差异特征 ---
-        # dim=1 表示在通道层面上进行 Concat
         concat_diff = torch.cat([R_1, R_2], dim=1) 
         
-        # --- 第五步：特征融合与降维 ---
-        # 融合后直接生成单通道的高亮异常图
         heatmap = self.W_hom(concat_diff)  
         
-        # --- 第六步：特征展平分类 ---
-        # 核心修正：GMP 捕捉局部极端病变，GAP 兼顾全局宏观差异
         pooled_avg = self.gap(heatmap)
         pooled_max = self.gmp(heatmap)
-        pooled = pooled_avg + pooled_max  # 双池化融合
+        pooled = pooled_avg + pooled_max
         
         logits = pooled.view(pooled.size(0), -1) 
 
         return logits, heatmap
-
-
-# class SiameseAnomalyNet(torch_nn.Module):
-#     """
-#     完整的双流异常检测网络 (弱监督定位版) - ResNet Backbone
-#     """
-#     def __init__(self, in_channels=3, backbone='resnet18', pretrained=False, 
-#                  pretrained_path=None, dropout=0.3):
-#         super(SiameseAnomalyNet, self).__init__()
-        
-#         # 1. 孪生特征提取器 (共享参数) - ResNet Backbone
-#         self.encoder = SharedEncoder(in_channels, backbone, pretrained, pretrained_path, dropout)
-        
-#         feat_channels = self.encoder.out_channels
-        
-#         # 2. 对齐模块
-#         self.aligner = CrossAttentionAlignment(channels=feat_channels)
-        
-#         # 3. 异常热力图生成器 (将差异特征降维到 1 个通道，即二维 Heatmap)
-#         self.heatmap_generator = torch_nn.Sequential(
-#             torch_nn.Conv2d(feat_channels, feat_channels // 2, kernel_size=3, padding=1),
-#             torch_nn.BatchNorm2d(feat_channels // 2),
-#             torch_nn.ReLU(inplace=True),
-#             torch_nn.Dropout2d(p=dropout),  # 取消除以2，直接使用 0.5 的高强度 Dropout
-#             torch_nn.Conv2d(feat_channels // 2, feat_channels // 4, kernel_size=3, padding=1),
-#             torch_nn.BatchNorm2d(feat_channels // 4),
-#             torch_nn.ReLU(inplace=True),
-#             torch_nn.Dropout2d(p=dropout/2), # 在第二层也加一点 Dropout
-#             torch_nn.Conv2d(feat_channels // 4, 1, kernel_size=1) 
-#         )
-        
-#         # 4. 全局平均池化 (GAP) 用于图像级分类
-#         self.gap = torch_nn.AdaptiveAvgPool2d((1, 1))
-
-#     def forward(self, img_A, mask_A, img_B, mask_B):
-#         """
-#         输入:
-#             img_A, img_B: 健康与同源异常染色体图像 (B, 1, H, W)
-#             mask_A, mask_B: 对应的整条染色体掩码 (B, 1, H, W)，值域需在 [0, 1] 之间
-#         """
-#         # --- 第一步：背景抑制 (利用现有的整条 Mask) ---
-#         # 明确告诉网络：只关注 Mask 为 1 的区域，屏蔽背景噪点
-#         x_A = img_A * mask_A
-#         x_B = img_B * mask_B
-        
-#         # --- 第二步：双流特征提取 (孪生网络) ---
-#         feat_A = self.encoder(x_A)
-#         feat_B = self.encoder(x_B)
-        
-#         # --- 第三步：交叉注意力对齐 ---
-#         # 克服两条染色体弯曲度不同的问题
-#         aligned_feat_B = self.aligner(feat_A=feat_A, feat_B=feat_B)
-        
-#         # --- 第四步：计算结构差异 ---
-#         # 只有在发生实质性结构异常（如缺失、易位）的地方，绝对误差才会很大
-#         diff_feat = torch.abs(feat_A - aligned_feat_B)
-        
-#         # --- 第五步：生成二维异常热力图 ---
-#         # 这是一张缩小的 2D 特征图，高亮区域即为网络“怀疑”的异常位置
-#         heatmap = self.heatmap_generator(diff_feat) # 形状: (B, 1, H', W')
-        
-#         # --- 第六步：弱监督分类 (GAP) ---
-#         # 将热力图压缩成一个标量，用于计算 BCE Loss
-#         pooled = self.gap(heatmap) # 形状: (B, 1, 1, 1)
-#         logits = pooled.view(pooled.size(0), -1) # 形状: (B, 1)
-        
-#         return logits, heatmap
-
-# ================= 测试运行与使用示例 =================
-if __name__ == "__main__":
-    B, C, H, W = 4, 3, 96, 96
-    
-    dummy_img_A = torch.rand(B, C, H, W)
-    dummy_mask_A = torch.ones(B, C, H, W)
-    
-    dummy_img_B = torch.rand(B, C, H, W)
-    dummy_mask_B = torch.ones(B, C, H, W)
-    
-    # 测试不同的 ResNet backbone
-    for backbone in ['resnet18', 'resnet34', 'resnet50']:
-        print(f"\n=== 测试 {backbone} ===")
-        model = SiameseAnomalyNet(in_channels=C, backbone=backbone, pretrained=False, dropout=0.3)
-        
-        # 统计参数量
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        print(f"总参数量: {total_params:,} ({total_params/1e6:.2f}M)")
-        print(f"可训练参数量: {trainable_params:,} ({trainable_params/1e6:.2f}M)")
-        
-        # 前向传播
-        logits, heatmap = model(dummy_img_A, dummy_mask_A, dummy_img_B, dummy_mask_B)
-        prob = torch.sigmoid(logits)
-        
-        print(f"输入: {dummy_img_A.shape}")
-        print(f"特征图输出: {heatmap.shape}")
-        print(f"最终分类概率 (Probability): {prob.shape} -> 代表这对染色体异常的概率")
-        print(f"异常热力图 (Anomaly Heatmap): {heatmap.shape} -> 可直接叠加回原图显示高光异常区域")

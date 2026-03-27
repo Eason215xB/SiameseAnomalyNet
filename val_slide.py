@@ -37,6 +37,7 @@ from utils.dataloader import (
 )
 from utils.model import SiameseAnomalyNet
 from utils.bind_category import pair_sample_bind_category
+from utils.val_cli import register_val_data_args, paras_dict_from_val_args
 
 
 SLIDE_PRED_PCT_THRESHOLDS = list(range(50, 81, 5))  # 50, 55, ..., 80
@@ -480,6 +481,7 @@ def init_distributed():
 
 
 def _metrics_from_cm(tn, fp, fn, tp):
+    """acc、特异、精确度、敏感(召回)、排阴(NPV)。"""
     def _safe_div(num, den):
         return float(num) / float(den) if den > 0 else float("nan")
 
@@ -488,6 +490,7 @@ def _metrics_from_cm(tn, fp, fn, tp):
     specificity = _safe_div(tn, tn + fp)
     precision = _safe_div(tp, tp + fp)
     recall = _safe_div(tp, tp + fn)
+    npv = _safe_div(tn, tn + fn)
     if tp + fp == 0 or tp + fn == 0:
         f1 = 0.0
     else:
@@ -495,7 +498,7 @@ def _metrics_from_cm(tn, fp, fn, tp):
         f1 = float(2 * p * r / (p + r)) if (p + r) > 0 else 0.0
         if math.isnan(f1):
             f1 = 0.0
-    return acc, f1, specificity, precision, recall
+    return acc, f1, specificity, precision, recall, npv
 
 
 def _metrics_subset_binary(y_true, y_prob, y_pred):
@@ -520,7 +523,7 @@ def _metrics_subset_binary(y_true, y_prob, y_pred):
         f1 = 0.0
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
     tn, fp, fn, tp = int(cm[0, 0]), int(cm[0, 1]), int(cm[1, 0]), int(cm[1, 1])
-    _, _, spec, prec, rec = _metrics_from_cm(tn, fp, fn, tp)
+    _, _, spec, prec, rec, npv = _metrics_from_cm(tn, fp, fn, tp)
     return {
         "n": n,
         "accuracy": float(acc),
@@ -529,6 +532,7 @@ def _metrics_subset_binary(y_true, y_prob, y_pred):
         "specificity": spec,
         "precision": prec,
         "recall": rec,
+        "npv": npv,
         "confusion_matrix": [[tn, fp], [fn, tp]],
     }
 
@@ -536,8 +540,7 @@ def _metrics_subset_binary(y_true, y_prob, y_pred):
 @torch.no_grad()
 def run_val():
     parser = argparse.ArgumentParser(description="Siamese Anomaly Validation & Inference")
-    parser.add_argument("--config", type=str, default="./configs/paras.json")
-    parser.add_argument("--ckpt", type=str, required=True, help="Path to best_siamese_model.pth")
+    register_val_data_args(parser)
     parser.add_argument(
         "--no_save_localization",
         action="store_true",
@@ -553,8 +556,7 @@ def run_val():
     args = parser.parse_args()
     save_localization = not args.no_save_localization
 
-    with open(args.config, "r", encoding="utf-8") as f:
-        paras = json.load(f)
+    paras = paras_dict_from_val_args(args)
 
     distributed, local_rank = init_distributed()
     device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
@@ -635,7 +637,7 @@ def run_val():
 
     all_labels, all_probs, all_preds, all_cat, all_slide_ids = [], [], [], [], []
     sum_loss, n_loss = 0.0, 0
-    # 与权重路径无关：可视化默认写在配置里的 log_path 下（相对路径相对当前工作目录）
+    # 输出目录由 --log-path 或 --ckpt 所在目录决定
     _inf_name = "inference_results_train" if args.split == "train" else "inference_results"
     save_dir = os.path.abspath(os.path.join(paras["log_path"], _inf_name))
     loc_dir = os.path.join(save_dir, "localization")
@@ -831,11 +833,11 @@ def run_val():
                 "rule_positive_if": "mean_pair_prob >= threshold",
                 "auc": auc_roc,
                 "youden_threshold_on_mean_prob": y_thr,
-                "youden_sensitivity_recall": y_sens,
+                "youden_recall": y_sens,
                 "youden_specificity": y_spec,
                 "youden_J": y_J,
                 "roc_png": os.path.basename(roc_png),
-                "note": "Youden J = sensitivity + specificity - 1 = TPR - FPR（在 ROC 上取最大）",
+                "note": "Youden J = recall + specificity - 1 = TPR - FPR（在 ROC 上取最大）",
             }
             print(
                 "--- slide-level ROC (score = mean pair prob) | Youden 平衡阈值 ---",
@@ -884,10 +886,11 @@ def run_val():
             n_neg = n_total - n_pos
             cm = confusion_matrix(y_slide_t, y_slide_pred, labels=[0, 1])
             tn, fp, fn, tp = int(cm[0, 0]), int(cm[0, 1]), int(cm[1, 0]), int(cm[1, 1])
-            _, _, spec, prec, rec = _metrics_from_cm(tn, fp, fn, tp)
+            _, _, spec, prec, rec, npv = _metrics_from_cm(tn, fp, fn, tp)
             spec_s = f"{spec:.4f}" if not math.isnan(spec) else "nan"
             prec_s = f"{prec:.4f}" if not math.isnan(prec) else "nan"
             rec_s = f"{rec:.4f}" if not math.isnan(rec) else "nan"
+            npv_s = f"{npv:.4f}" if not math.isnan(npv) else "nan"
             auc_s = f"{auc:.4f}" if not math.isnan(auc) else "nan"
             val_cm = f"[[{tn},{fp}],[{fn},{tp}]]"
             val_note = ""
@@ -895,7 +898,7 @@ def run_val():
                 val_note = " | val_note=single_class_labels"
             print(
                 f"  X={pct}% | n_slides={n_total} n0={n_neg} n1={n_pos} cm={val_cm} | "
-                f"acc={acc:.4f} auc={auc_s} f1={f1:.4f} spec={spec_s} prec={prec_s} rec={rec_s}{val_note}",
+                f"acc={acc:.4f} auc={auc_s} f1={f1:.4f} spec={spec_s} sens={rec_s} prec={prec_s} npv={npv_s}{val_note}",
                 flush=True,
             )
             metrics_by_pred_pct[str(pct)] = {
@@ -906,8 +909,9 @@ def run_val():
                 "auc": auc,
                 "f1_score": float(f1),
                 "specificity": spec,
-                "precision": prec,
                 "recall": rec,
+                "precision": prec,
+                "npv": npv,
                 "confusion_matrix": [[tn, fp], [fn, tp]],
             }
 
@@ -950,8 +954,9 @@ def run_val():
                 "auc": _nan_to_none(m["auc"]),
                 "f1_score": m["f1_score"],
                 "specificity": _nan_to_none(m["specificity"]),
-                "precision": _nan_to_none(m["precision"]),
                 "recall": _nan_to_none(m["recall"]),
+                "precision": _nan_to_none(m["precision"]),
+                "npv": _nan_to_none(m["npv"]),
                 "confusion_matrix": m["confusion_matrix"],
             }
 
@@ -978,12 +983,14 @@ def run_val():
             spec_c = m["specificity"]
             prec_c = m["precision"]
             rec_c = m["recall"]
+            npv_c = m["npv"]
             spec_s = f"{spec_c:.4f}" if not math.isnan(spec_c) else "nan"
             prec_s_c = f"{prec_c:.4f}" if not math.isnan(prec_c) else "nan"
             rec_s_c = f"{rec_c:.4f}" if not math.isnan(rec_c) else "nan"
+            npv_s_c = f"{npv_c:.4f}" if not math.isnan(npv_c) else "nan"
             print(
                 f"  [{cat}] n_slides={m['n']} acc={m['accuracy']:.4f} auc={auc_cs} "
-                f"f1={m['f1_score']:.4f} spec={spec_s} prec={prec_s_c} rec={rec_s_c} "
+                f"f1={m['f1_score']:.4f} spec={spec_s} rec={rec_s_c} prec={prec_s_c} npv={npv_s_c} "
                 f"cm={m['confusion_matrix']}",
                 flush=True,
             )
@@ -1007,8 +1014,9 @@ def run_val():
                 "auc": _nan_to_none(v["auc"]),
                 "f1_score": v["f1_score"],
                 "specificity": _nan_to_none(v["specificity"]),
-                "precision": _nan_to_none(v["precision"]),
                 "recall": _nan_to_none(v["recall"]),
+                "precision": _nan_to_none(v["precision"]),
+                "npv": _nan_to_none(v["npv"]),
                 "confusion_matrix": v["confusion_matrix"],
             }
 
@@ -1021,8 +1029,8 @@ def run_val():
                 "youden_threshold_on_mean_prob": _nan_to_none(
                     slide_roc_block["youden_threshold_on_mean_prob"]
                 ),
-                "youden_sensitivity_recall": _nan_to_none(
-                    slide_roc_block["youden_sensitivity_recall"]
+                "youden_recall": _nan_to_none(
+                    slide_roc_block["youden_recall"]
                 ),
                 "youden_specificity": _nan_to_none(slide_roc_block["youden_specificity"]),
                 "youden_J": _nan_to_none(slide_roc_block["youden_J"]),

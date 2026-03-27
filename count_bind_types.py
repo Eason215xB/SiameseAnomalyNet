@@ -54,7 +54,7 @@ def count_bind_types(cells, ann_h5_path, split_name):
 
 def main():
     parser = argparse.ArgumentParser(description="统计数据集中每条染色体的类别（结构正常 + 异常 bind 粗类）")
-    parser.add_argument("--config", type=str, default="./configs/paras_val_北医三院_normal.json", help="Path to config json")
+    parser.add_argument("--config", type=str, default="./configs/paras.json", help="Path to config json")
     args = parser.parse_args()
     
     # 1. 加载配置

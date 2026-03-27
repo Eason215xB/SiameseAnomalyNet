@@ -114,6 +114,7 @@ def _save_train_code_snapshot(log_path, config_path):
 
 #----------混淆矩阵指标计算------------
 def _metrics_from_cm(tn, fp, fn, tp):
+    """acc、特异(specificity)、精确度(precision)、敏感/召回(recall/recall)、排阴(NPV)。"""
     def _safe_div(num, den):
         return float(num) / float(den) if den > 0 else float("nan")
 
@@ -122,6 +123,7 @@ def _metrics_from_cm(tn, fp, fn, tp):
     specificity = _safe_div(tn, tn + fp)
     precision = _safe_div(tp, tp + fp)
     recall = _safe_div(tp, tp + fn)
+    npv = _safe_div(tn, tn + fn)
     if tp + fp == 0 or tp + fn == 0:
         f1 = 0.0
     else:
@@ -129,7 +131,7 @@ def _metrics_from_cm(tn, fp, fn, tp):
         f1 = float(2 * p * r / (p + r)) if (p + r) > 0 else 0.0
         if math.isnan(f1):
             f1 = 0.0
-    return acc, f1, specificity, precision, recall
+    return acc, f1, specificity, precision, recall, npv
 
 #----------训练开始的可视化------------
 def visualize_training_samples(dataloader, log_path, logger, num_batches=3, max_samples_per_batch=4):
@@ -234,6 +236,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, loca
     sum_loss = 0.0
     n_batch = 0
     tn = fp = fn = tp = 0
+    labels_all, probs_all = [], []
     pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}", leave=False, disable=(local_rank != 0))
 
     for batch_data in pbar:
@@ -260,6 +263,8 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, loca
             fp += int(((lab == 0) & (preds == 1)).sum().item())
             fn += int(((lab == 1) & (preds == 0)).sum().item())
             tp += int(((lab == 1) & (preds == 1)).sum().item())
+            labels_all.extend(lab.cpu().numpy().flatten().tolist())
+            probs_all.extend(probs.cpu().numpy().flatten().tolist())
         pbar.set_postfix(loss=f"{loss.item():.4f}")
 
     stats = torch.tensor(
@@ -268,10 +273,26 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, epoch, loca
     dist.all_reduce(stats, op=dist.ReduceOp.SUM)
     g_sum, g_nb, g_tn, g_fp, g_fn, g_tp = (float(x) for x in stats.tolist())
     avg_loss = g_sum / g_nb if g_nb > 0 else 0.0
-    t_acc, t_f1, t_spec, t_prec, t_rec = _metrics_from_cm(
+    t_acc, t_f1, t_spec, t_prec, t_rec, t_npv = _metrics_from_cm(
         int(g_tn), int(g_fp), int(g_fn), int(g_tp)
     )
-    return avg_loss, t_acc, t_f1, t_spec, t_prec, t_rec
+
+    gathered = [None] * dist.get_world_size()
+    dist.all_gather_object(gathered, (labels_all, probs_all))
+    flat_y, flat_p = [], []
+    for g in gathered:
+        flat_y.extend(g[0])
+        flat_p.extend(g[1])
+    y_arr = np.asarray(flat_y, dtype=np.float64)
+    if np.unique(y_arr).size < 2:
+        t_auc = float("nan")
+    else:
+        try:
+            t_auc = roc_auc_score(flat_y, flat_p)
+        except ValueError:
+            t_auc = float("nan")
+
+    return avg_loss, t_acc, t_f1, t_spec, t_prec, t_rec, t_npv, t_auc
 
 
 #--------------loss图---------------
@@ -323,6 +344,7 @@ def evaluate(model, dataloader, criterion, device):
             float("nan"),
             float("nan"),
             float("nan"),
+            float("nan"),
             0,
             0,
             0,
@@ -358,6 +380,7 @@ def evaluate(model, dataloader, criterion, device):
     specificity = _safe_div(tn, tn + fp)
     precision = _safe_div(tp, tp + fp)
     recall = _safe_div(tp, tp + fn)
+    npv = _safe_div(tn, tn + fn)
 
     return (
         avg_loss,
@@ -367,6 +390,7 @@ def evaluate(model, dataloader, criterion, device):
         specificity,
         precision,
         recall,
+        npv,
         n_neg,
         n_pos,
         tn,
@@ -416,17 +440,20 @@ def main():
                     "epoch",
                     "train_loss",
                     "train_acc",
+                    "train_auc",
                     "train_f1",
                     "train_specificity",
-                    "train_precision",
                     "train_recall",
+                    "train_precision",
+                    "train_npv",
                     "val_loss",
                     "val_acc",
                     "val_auc",
                     "val_f1",
                     "val_specificity",
-                    "val_precision",
                     "val_recall",
+                    "val_precision",
+                    "val_npv",
                 ]
             )
 
@@ -622,7 +649,7 @@ def main():
     for epoch in range(num_epochs):
         train_sampler.set_epoch(epoch)
 
-        train_loss, train_acc, train_f1, train_spec, train_prec, train_rec = train_one_epoch(
+        train_loss, train_acc, train_f1, train_spec, train_prec, train_rec, train_npv, train_auc = train_one_epoch(
             model, train_loader, criterion, optimizer, device, epoch, local_rank
         )
 
@@ -635,6 +662,7 @@ def main():
                 val_spec,
                 val_prec,
                 val_rec,
+                val_npv,
                 val_n0,
                 val_n1,
                 val_tn,
@@ -661,6 +689,12 @@ def main():
             t_spec_s = f"{train_spec:.4f}" if not math.isnan(train_spec) else "nan"
             t_prec_s = f"{train_prec:.4f}" if not math.isnan(train_prec) else "nan"
             t_rec_s = f"{train_rec:.4f}" if not math.isnan(train_rec) else "nan"
+            t_npv_s = f"{train_npv:.4f}" if not math.isnan(train_npv) else "nan"
+            t_auc_s = (
+                f"{train_auc:.4f}"
+                if isinstance(train_auc, float) and not math.isnan(train_auc)
+                else "nan"
+            )
             auc_str = (
                 f"{val_auc:.4f}"
                 if isinstance(val_auc, float) and not math.isnan(val_auc)
@@ -669,6 +703,7 @@ def main():
             spec_str = f"{val_spec:.4f}" if not math.isnan(val_spec) else "nan"
             prec_str = f"{val_prec:.4f}" if not math.isnan(val_prec) else "nan"
             rec_str = f"{val_rec:.4f}" if not math.isnan(val_rec) else "nan"
+            npv_str = f"{val_npv:.4f}" if not math.isnan(val_npv) else "nan"
             val_cm = f"[[{val_tn},{val_fp}],[{val_fn},{val_tp}]]"
             val_note = ""
             if val_n0 == 0 or val_n1 == 0:
@@ -680,9 +715,11 @@ def main():
                 f"lr={cur_lr:.6g} | "
                 f"Epoch {epoch+1}/{num_epochs} | "
                 f"train_loss={train_loss:.4f} | "
-                f"train acc={train_acc:.4f} f1={train_f1:.4f} spec={t_spec_s} prec={t_prec_s} rec={t_rec_s} ||||| "
+                f"train acc={train_acc:.4f} auc={t_auc_s} f1={train_f1:.4f} "
+                f"spec={t_spec_s} sens={t_rec_s} prec={t_prec_s} npv={t_npv_s} ||||| "
                 f"val_loss={val_loss:.4f} | "
-                f"val acc={val_acc:.4f} auc={auc_str} f1={val_f1:.4f} spec={spec_str} prec={prec_str} rec={rec_str} | "
+                f"val acc={val_acc:.4f} auc={auc_str} f1={val_f1:.4f} "
+                f"spec={spec_str} sens={rec_str} prec={prec_str} npv={npv_str} | "
                 f"early_stop={early_stop_counter}/{early_stop_patience}"
                 f"{val_note}"
             )
@@ -718,17 +755,20 @@ def main():
                         epoch + 1,
                         train_loss,
                         train_acc,
+                        train_auc,
                         train_f1,
                         train_spec,
-                        train_prec,
                         train_rec,
+                        train_prec,
+                        train_npv,
                         val_loss,
                         val_acc,
                         val_auc,
                         val_f1,
                         val_spec,
-                        val_prec,
                         val_rec,
+                        val_prec,
+                        val_npv,
                     ]
                 )
             
