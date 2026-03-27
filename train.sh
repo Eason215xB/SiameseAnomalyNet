@@ -11,4 +11,4 @@ echo "🚀 开始启动多卡分布式训练，使用显卡数量: $NUM_GPUS"
 torchrun --nproc_per_node=$NUM_GPUS \
          --master_port=29511 \
          train.py \
-         --config ./configs/paras.json
+         --config ./configs/paras_new.json

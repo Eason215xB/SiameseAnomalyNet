@@ -35,7 +35,7 @@ from utils.dataloader import (
     get_train_data,
     get_val_data,
 )
-from utils.model import SiameseAnomalyNet
+from utils.model_train import SiameseAnomalyNet
 from utils.bind_category import pair_sample_bind_category
 from utils.val_cli import register_val_data_args, paras_dict_from_val_args
 

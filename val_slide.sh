@@ -1,7 +1,7 @@
-LOG_DIR="./logs/AbnormalClass/Siamese-Merged-0326-HomBlock-3"
+LOG_DIR="./logs/AbnormalClass/Siamese-Merged-0327-HomBlock"
 CKPT="${LOG_DIR}/best_siamese_model.pth"
-H5_IMG="/data_b/algo001/dataset/image-PB-abnormal-test.h5"
-H5_ANN="/data_b/algo001/dataset/annotation-PB-abnormal-test.h5"
+H5_IMG="/data_b/algo001/dataset/image-PB-abnormal-0327.h5"
+H5_ANN="/data_b/algo001/dataset/annotation-PB-abnormal-0327.h5"
 
 DATASETS=()
 for i in $(seq 0 18); do
